@@ -1,0 +1,224 @@
+<!DOCTYPE html>
+<html lang="uk">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex, nofollow">
+<title>Перевірка сторінки судоку</title>
+<style>
+  body { margin: 0; padding: 2rem 1.25rem; background: #0d0b1f; color: #efe7dc;
+         font: 15px/1.6 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
+  h1 { font-size: 1.2rem; font-weight: 500; margin: 0 0 1.2rem; }
+  #summary { margin: 0 0 1.5rem; padding: .8rem 1rem; border-radius: 8px; background: rgba(239,231,220,.06); }
+  #summary.pass { color: #bfe6b0; } #summary.fail { color: #e58a7a; }
+  .ok { color: rgba(239,231,220,.55); } .bad { color: #e58a7a; font-weight: 700; }
+  .info { color: #f2b872; margin-top: 1rem; }
+  div { white-space: pre-wrap; }
+  iframe { width: 420px; height: 760px; border: 1px solid rgba(239,231,220,.15); border-radius: 8px;
+           margin-top: 1.5rem; background: #0d0b1f; }
+</style>
+</head>
+<body>
+<h1>Перевірка сторінки судоку</h1>
+<p id="summary">виконую…</p>
+<div id="out"></div>
+<iframe id="frame" title="сторінка судоку"></iframe>
+
+<script>
+(async () => {
+  'use strict';
+  const out = document.getElementById('out');
+  let fails = 0, total = 0;
+  const line = (t, c) => { const d = document.createElement('div'); d.className = c || ''; d.textContent = t; out.appendChild(d); };
+  const ok = (cond, msg) => { total++; if (cond) line('ok   ' + msg, 'ok'); else { fails++; line('FAIL ' + msg, 'bad'); } };
+  const wait = (ms) => new Promise((r) => setTimeout(r, ms));
+  const until = async (cond, ms = 8000) => {
+    const t0 = Date.now();
+    while (Date.now() - t0 < ms) { if (cond()) return true; await wait(40); }
+    return false;
+  };
+
+  // збереження гравця не чіпаємо
+  const KEY = 'etd-sudoku';
+  let backup = null;
+  try { backup = localStorage.getItem(KEY); localStorage.removeItem(KEY); } catch {}
+
+  const frame = document.getElementById('frame');
+  const loaded = new Promise((r) => frame.addEventListener('load', r, { once: true }));
+  frame.src = 'sudoku.html';
+  await loaded;
+
+  const win = frame.contentWindow;
+  const doc = frame.contentDocument;
+  let api = null;
+  const ready = await until(() => {
+    api = win.__sudokuTest;
+    return api && api.game && !doc.getElementById('board').classList.contains('loading');
+  });
+  ok(ready, 'сторінка завантажилась і перша задача згенерована');
+  if (!ready) { finish(); return; }
+
+  const $ = (id) => doc.getElementById(id);
+  const click = (el) => el.dispatchEvent(new win.MouseEvent('click', { bubbles: true }));
+  const press = (key, opts) => doc.defaultView.dispatchEvent(new win.KeyboardEvent('keydown', Object.assign({ key, bubbles: true }, opts)));
+  const cellOf = (i) => api.cells[i];
+  const keyOf = (d) => api.keys[d - 1];
+
+  let game = api.game;
+  const emptyCells = () => game.values.map((v, i) => (!v && !game.isGiven(i) ? i : -1)).filter((i) => i >= 0);
+
+  ok(api.cells.length === 81, 'на полі 81 клітинка');
+  ok(doc.querySelectorAll('.cell.given').length === game.puzzle.filter(Boolean).length,
+     'кількість цифр умови на екрані збігається із задачею');
+  ok(doc.querySelectorAll('.key').length === 9, 'на клавіатурі 9 цифр');
+  ok($('t-check').getAttribute('aria-pressed') === 'true', 'підсвітка помилок увімкнена від початку');
+
+  // вибір клітинки
+  const target = emptyCells()[0];
+  click(cellOf(target));
+  ok(cellOf(target).classList.contains('sel'), 'клік вибирає клітинку');
+  ok(api.selected === target, 'вибрана клітинка збігається з натиснутою');
+
+  // правильна і неправильна цифра
+  const right = game.solution[target];
+  const wrong = right === 9 ? 8 : right + 1;
+  click(keyOf(wrong));
+  ok(game.values[target] === wrong, 'цифра з клавіатури потрапляє в клітинку');
+  ok(cellOf(target).classList.contains('bad'), 'неправильна цифра підсвічується');
+  ok(cellOf(target).querySelector('.v').textContent === String(wrong), 'цифру видно в клітинці');
+
+  click($('t-undo'));
+  ok(game.values[target] === 0, 'кнопка «назад» скасовує хід');
+
+  click(keyOf(right));
+  ok(game.values[target] === right && !cellOf(target).classList.contains('bad'),
+     'правильна цифра не підсвічується як помилка');
+  click($('t-erase'));
+  ok(game.values[target] === 0, 'кнопка «стерти» звільняє клітинку');
+
+  // олівець
+  click($('t-notes'));
+  ok($('t-notes').getAttribute('aria-pressed') === 'true', 'олівець увімкнувся');
+  click(keyOf(3)); click(keyOf(6));
+  ok(game.notesOf(target).join(',') === '3,6', 'олівець записує кандидатів');
+  ok(cellOf(target).classList.contains('notes'), 'клітинка перейшла в режим позначок');
+  ok([...cellOf(target).querySelectorAll('.ns i')].map((n) => n.textContent).join('') === '36',
+     'позначки видно в клітинці');
+  click($('t-notes'));
+  ok($('t-notes').getAttribute('aria-pressed') === 'false', 'олівець вимкнувся');
+  click(keyOf(right));
+  ok(game.values[target] === right && game.notesOf(target).length === 0,
+     'звичайна цифра прибирає позначки в цій клітинці');
+  click($('t-undo'));
+  ok(game.notesOf(target).join(',') === '3,6', 'скасування повертає позначки');
+  click($('t-erase'));
+
+  // клавіатура
+  click(cellOf(target));
+  const row = (target / 9) | 0;
+  press('ArrowRight');
+  const movedRight = api.selected === target + 1 || (target % 9 === 8 && api.selected === target);
+  ok(movedRight, 'стрілка вправо переставляє вибір у межах рядка');
+  press('ArrowDown');
+  ok(((api.selected / 9) | 0) === row + 1 || row === 8, 'стрілка вниз переставляє вибір на рядок нижче');
+  const kbCell = api.selected;
+  if (!game.isGiven(kbCell)) {
+    const kbRight = game.solution[kbCell];
+    press(String(kbRight));
+    ok(game.values[kbCell] === kbRight, 'цифра з клавіатури ставиться в клітинку');
+    press('Backspace');
+    ok(game.values[kbCell] === 0, 'Backspace стирає цифру');
+  } else {
+    ok(true, 'цифра з клавіатури: клітинка виявилась заданою, пропускаємо');
+    ok(true, 'Backspace: клітинка виявилась заданою, пропускаємо');
+  }
+
+  // підказка
+  const spot = emptyCells()[0];
+  click(cellOf(spot));
+  click($('t-hint'));
+  ok(game.values[spot] === game.solution[spot], 'підказка відкриває правильну цифру');
+  ok(cellOf(spot).classList.contains('hint'), 'підказана цифра має свій колір');
+  ok(game.hints === 1, 'підказки рахуються');
+
+  // перемикання складності
+  const beforePuzzle = game.puzzle.join('');
+  click([...$('diffs').children].find((b) => b.dataset.k === 'medium'));
+  const switched = await until(() => api.game !== game && !$('board').classList.contains('loading'));
+  ok(switched, 'перемикання складності генерує нову задачу');
+  game = api.game;
+  ok(game.difficulty === 'medium' && api.difficulty === 'medium', 'складність змінилась на «середньо»');
+  ok(game.puzzle.join('') !== beforePuzzle, 'задача справді інша');
+  ok([...$('diffs').children].find((b) => b.dataset.k === 'medium').getAttribute('aria-pressed') === 'true',
+     'активна складність позначена');
+
+  // повернення до легкого рівня підхоплює незавершену партію
+  click([...$('diffs').children].find((b) => b.dataset.k === 'easy'));
+  await until(() => api.game !== game && !$('board').classList.contains('loading'));
+  game = api.game;
+  ok(game.difficulty === 'easy' && game.values[spot] === game.solution[spot],
+     'партія легкого рівня повернулась там, де її залишили');
+
+  // лічильник цифр
+  const digitLeft = (d) => keyOf(d).querySelector('.left').textContent;
+  const someDigit = game.values.find((v) => v) || 1;
+  ok(digitLeft(someDigit) === String(game.remaining(someDigit)) || game.remaining(someDigit) === 0,
+     'лічильник біля цифри показує, скільки її ще лишилось');
+
+  // проходимо задачу до кінця
+  const left = emptyCells();
+  for (const i of left) {
+    click(cellOf(i));
+    click(keyOf(game.solution[i]));
+  }
+  ok(game.done, 'заповнене поле завершує партію');
+  const shown = await until(() => $('win').classList.contains('on'));
+  ok(shown, 'зʼявляється вікно перемоги');
+  ok($('win-sub').textContent.includes('підказок') || $('win-sub').textContent.includes('без підказок'),
+     'вікно перемоги показує час і підказки');
+  ok($('solved').textContent === '1', 'лічильник розвʼязаних задач збільшився');
+
+  const finishedPuzzle = game.puzzle.join('');
+  click($('w-next'));
+  const nextReady = await until(() => api.game !== game && !$('board').classList.contains('loading'));
+  ok(nextReady, 'кнопка «наступна» дає нову задачу');
+  game = api.game;
+  ok(!game.done && game.puzzle.join('') !== finishedPuzzle, 'нова задача не розвʼязана й відрізняється');
+  ok(game.values.filter(Boolean).length === game.puzzle.filter(Boolean).length,
+     'нова задача починається лише з цифр умови');
+
+  // збереження між відкриваннями сторінки
+  const marker = emptyCells()[0];
+  click(cellOf(marker));
+  click(keyOf(game.solution[marker]));
+  let stored = null;
+  try { stored = JSON.parse(localStorage.getItem(KEY)); } catch {}
+  ok(stored && stored.games && stored.games[game.difficulty], 'партія зберігається в localStorage');
+
+  const reloaded = new Promise((r) => frame.addEventListener('load', r, { once: true }));
+  frame.contentWindow.location.reload();
+  await reloaded;
+  const back = await until(() => {
+    api = frame.contentWindow.__sudokuTest;
+    return api && api.game && !frame.contentDocument.getElementById('board').classList.contains('loading');
+  });
+  ok(back, 'сторінка відкривається повторно');
+  ok(back && api.game.values[marker] === game.solution[marker],
+     'після перезавантаження партія продовжується з того ж місця');
+
+  finish();
+
+  function finish() {
+    try {
+      if (backup === null) localStorage.removeItem(KEY);
+      else localStorage.setItem(KEY, backup);
+    } catch {}
+    const s = document.getElementById('summary');
+    s.className = fails ? 'fail' : 'pass';
+    s.textContent = fails ? `${fails} провалів із ${total} перевірок` : `усі ${total} перевірок пройдено`;
+    document.title = (fails ? 'FAIL ' : 'PASS ') + `${total - fails}/${total}`;
+  }
+})();
+</script>
+</body>
+</html>

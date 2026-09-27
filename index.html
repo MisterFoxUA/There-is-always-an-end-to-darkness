@@ -28,6 +28,7 @@
     --candle: #f2b872;
     --rose: #e58a7a;
     --moon: #b9c6ec;
+    --moss: #a9c8a8;
 
     --serif: 'Cormorant Garamond', 'Cormorant', Georgia, 'Times New Roman', serif;
     --hand: 'Caveat', 'Segoe Print', 'Bradley Hand', cursive;
@@ -199,12 +200,23 @@
   }
   .choice[data-choice="yes"]::before { background: radial-gradient(closest-side, rgba(242,184,114,.34), transparent); }
   .choice[data-choice="no"]::before  { background: radial-gradient(closest-side, rgba(185,198,236,.26), transparent); }
+  .choice[data-choice="play"]::before { background: radial-gradient(closest-side, rgba(169,200,168,.26), transparent); }
   .choice[data-choice="yes"]::after  { background: linear-gradient(90deg, transparent, var(--candle), transparent); }
   .choice[data-choice="no"]::after   { background: linear-gradient(90deg, transparent, var(--moon), transparent); }
+  .choice[data-choice="play"]::after { background: linear-gradient(90deg, transparent, var(--moss), transparent); }
+
+  /* Судоку — не відповідь, тому окремим рядком і тихіше за два головні вибори */
+  .choices .break { flex-basis: 100%; height: 0; }
+  .choice[data-choice="play"] {
+    font-size: clamp(1.15rem, 3.2vw, 1.4rem);
+    color: var(--bone-dim);
+    margin-top: clamp(.4rem, 2vh, 1.2rem);
+  }
 
   .choice:hover, .choice:focus-visible, .choice.armed { transform: translateY(-2px); }
   .choice[data-choice="yes"]:hover, .choice[data-choice="yes"]:focus-visible, .choice[data-choice="yes"].armed { color: #ffe6c4; }
   .choice[data-choice="no"]:hover,  .choice[data-choice="no"]:focus-visible,  .choice[data-choice="no"].armed  { color: #e3e9ff; }
+  .choice[data-choice="play"]:hover, .choice[data-choice="play"]:focus-visible, .choice[data-choice="play"].armed { color: #dff0dd; }
   .choice:hover::before, .choice:focus-visible::before, .choice.armed::before { opacity: 1; transform: scale(1); }
   .choice:hover::after,  .choice:focus-visible::after,  .choice.armed::after  { width: 70%; }
   .choice:focus-visible { outline: 1px dashed var(--bone-faint); outline-offset: 4px; }
@@ -245,6 +257,7 @@
   #tip.below.on { transform: translate(-50%, 0) rotate(1deg); }
   #tip[data-tone="yes"] { --tip-glow: rgba(242,184,114,.4); --tip-ink: #ffdcaa; }
   #tip[data-tone="no"]  { --tip-glow: rgba(185,198,236,.35); --tip-ink: #dce4ff; }
+  #tip[data-tone="play"] { --tip-glow: rgba(169,200,168,.32); --tip-ink: #dff0dd; }
 
   #tip .tip-text {
     display: block;
@@ -370,6 +383,20 @@
     color: var(--bone-dim);
   }
 
+  /* Тихе посилання на судоку — там, де головне вже сказано */
+  .quiet-play {
+    margin: clamp(2rem, 6vh, 3rem) 0 0; text-align: center;
+    font-size: 1rem; font-style: italic;
+  }
+  .quiet-play a {
+    color: var(--bone-faint); text-decoration: none;
+    border-bottom: 1px solid transparent;
+    transition: color .5s ease, border-color .5s ease;
+  }
+  .quiet-play a:hover, .quiet-play a:focus-visible {
+    color: var(--moss); border-bottom-color: rgba(169,200,168,.4);
+  }
+
   noscript p { position: relative; z-index: 5; text-align: center; padding: 3rem 1.5rem; font-style: italic; color: var(--bone-dim); }
 
   @media (prefers-reduced-motion: reduce) {
@@ -401,6 +428,8 @@
       <button class="choice" type="button" data-choice="yes" id="btn-yes"></button>
       <span class="spark" aria-hidden="true"></span>
       <button class="choice" type="button" data-choice="no" id="btn-no"></button>
+      <span class="break" aria-hidden="true"></span>
+      <button class="choice" type="button" data-choice="play" id="btn-play"></button>
     </div>
     <p class="note" id="note"></p>
   </section>
@@ -408,11 +437,13 @@
   <section class="screen" id="letter">
     <article class="letter" id="letter-body"></article>
     <div class="letter-end" aria-hidden="true"><span></span></div>
+    <p class="quiet-play"><a href="sudoku.html">а якщо захочеться просто порахувати — тут судоку</a></p>
   </section>
 
   <section class="screen" id="ended">
     <p class="ended-title" id="ended-title"></p>
     <p class="ended-text" id="ended-text"></p>
+    <p class="quiet-play"><a href="sudoku.html">а якщо захочеться просто порахувати — тут судоку</a></p>
   </section>
 </main>
 
@@ -435,6 +466,12 @@ const CONFIG = {
   no: {
     label: 'Шансу немає',
     tip:   'У темряви завжди є кінець'
+  },
+  // Третій варіант: не відповідь, а окрема сторінка з судоку
+  play: {
+    label: 'Судоку?????',
+    tip:   'Йопт твою мать, таааа. Таааааа. К чорту дебільні квести і так далі. Світ може почекати',
+    href:  'sudoku.html'
   },
 
   note: 'Обрати можна лише один раз.',
@@ -594,9 +631,10 @@ const CONFIG = {
   });
   $('ask').style.setProperty('--after-q', (CONFIG.question.split(/\s+/).length * .17 + 1.4) + 's');
 
-  const btnYes = $('btn-yes'), btnNo = $('btn-no');
+  const btnYes = $('btn-yes'), btnNo = $('btn-no'), btnPlay = $('btn-play');
   btnYes.textContent = CONFIG.yes.label;
   btnNo.textContent = CONFIG.no.label;
+  btnPlay.textContent = CONFIG.play.label;
   const note = $('note');
   note.textContent = CONFIG.note;
   $('ended-title').textContent = CONFIG.ended.title;
@@ -641,7 +679,7 @@ const CONFIG = {
     hideTip();
   }
 
-  [btnYes, btnNo].forEach((btn) => {
+  [btnYes, btnNo, btnPlay].forEach((btn) => {
     btn.addEventListener('pointerdown', (e) => { lastPointer = e.pointerType; });
     btn.addEventListener('pointerenter', (e) => { if (e.pointerType === 'mouse') showTip(btn, false); });
     btn.addEventListener('pointerleave', (e) => { if (e.pointerType === 'mouse') hideTip(); });
@@ -659,6 +697,8 @@ const CONFIG = {
           return;
         }
       }
+      // Судоку нічого не надсилає і не витрачає єдину відповідь — просто інша сторінка
+      if (btn.dataset.choice === 'play') { location.href = CONFIG.play.href; return; }
       choose(btn.dataset.choice);
     });
   });

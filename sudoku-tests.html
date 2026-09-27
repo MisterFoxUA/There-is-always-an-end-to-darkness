@@ -1,0 +1,215 @@
+<!DOCTYPE html>
+<html lang="uk">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex, nofollow">
+<title>Перевірка рушія судоку</title>
+<style>
+  body { margin: 0; padding: 2rem 1.25rem; background: #0d0b1f; color: #efe7dc;
+         font: 15px/1.6 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
+  h1 { font-size: 1.2rem; font-weight: 500; margin: 0 0 1.2rem; }
+  #summary { margin: 0 0 1.5rem; padding: .8rem 1rem; border-radius: 8px;
+             background: rgba(239,231,220,.06); }
+  #summary.pass { color: #bfe6b0; } #summary.fail { color: #e58a7a; }
+  .ok   { color: rgba(239,231,220,.55); }
+  .bad  { color: #e58a7a; font-weight: 700; }
+  .info { color: #f2b872; margin-top: 1rem; }
+  div { white-space: pre-wrap; }
+</style>
+</head>
+<body>
+<h1>Перевірка рушія судоку</h1>
+<p id="summary">виконую…</p>
+<div id="out"></div>
+
+<script src="sudoku-engine.js"></script>
+<script src="sudoku-game.js"></script>
+<script>
+(() => {
+  'use strict';
+  const E = window.SudokuEngine;
+  const out = document.getElementById('out');
+  let fails = 0, total = 0;
+
+  const line = (text, cls) => {
+    const d = document.createElement('div');
+    d.className = cls || '';
+    d.textContent = text;
+    out.appendChild(d);
+  };
+  const ok = (cond, msg) => {
+    total++;
+    if (cond) line('ok   ' + msg, 'ok');
+    else { fails++; line('FAIL ' + msg, 'bad'); }
+  };
+  const avg = (a) => Math.round(a.reduce((x, y) => x + y, 0) / a.length);
+
+  function validFull(g) {
+    if (!g || g.length !== 81) return false;
+    return E.UNITS.every((u) => {
+      const s = new Set(u.map((i) => g[i]));
+      return s.size === 9 && !s.has(0);
+    });
+  }
+
+  // ───────── розвʼязувач ─────────
+  const empty = new Array(81).fill(0);
+  ok(validFull(E.solve(empty)), 'solve() на порожній сітці дає коректну повну сітку');
+
+  const known = '530070000600195000098000060800060003400803001700020006060000280000419005000080079'
+    .split('').map(Number);
+  ok(E.countSolutions(known, 2) === 1, 'класична задача має рівно один розвʼязок');
+  ok(validFull(E.solve(known)), 'класична задача розвʼязується у валідну сітку');
+  ok(E.logicalSolve(known).solved, 'класична задача розвʼязується людськими техніками');
+
+  const broken = known.slice(); broken[1] = 5;
+  ok(E.countSolutions(broken, 2) === 0, 'суперечлива сітка -> 0 розвʼязків');
+  ok(E.countSolutions(empty, 2) === 2, 'порожня сітка -> знайдено 2+ розвʼязки');
+
+  const multi = known.slice(); multi[0] = 0; multi[2] = 0; multi[3] = 0; multi[20] = 0; multi[24] = 0;
+  ok(E.countSolutions(multi, 2) >= 1, 'сітка з прибраними підказками все ще має розвʼязок');
+
+  // ───────── конфлікти ─────────
+  const vals = new Array(81).fill(0);
+  vals[0] = 3; vals[8] = 3;      // дублі в рядку
+  vals[9] = 4; vals[18] = 4;     // дублі в стовпці
+  vals[10] = 6; vals[20] = 6;    // дублі в квадраті
+  vals[40] = 7;
+  const c = E.conflicts(vals);
+  ok(c.has(0) && c.has(8), 'conflicts(): дублі в рядку знайдено');
+  ok(c.has(9) && c.has(18), 'conflicts(): дублі в стовпці знайдено');
+  ok(c.has(10) && c.has(20), 'conflicts(): дублі в квадраті знайдено');
+  ok(!c.has(40), 'conflicts(): одиничну цифру не позначено');
+  ok(!E.isComplete(vals), 'isComplete() = false для незаповненої сітки');
+  ok(E.isComplete(E.solve(empty)), 'isComplete() = true для повної сітки');
+
+  // ───────── генерація ─────────
+  const N = Number(new URLSearchParams(location.search).get('n') || 10);
+  const CLUE_BANDS = { easy: [36, 52], medium: [30, 44], hard: [28, 40], expert: [22, 34] };
+  for (const d of ['easy', 'medium', 'hard', 'expert']) {
+    const spec = E.LEVELS[d];
+    const want = `${spec.min}${spec.min === spec.max ? '' : '–' + spec.max}`;
+    let uniq = 0, consistent = 0, levelOk = 0, logical = 0;
+    const clues = [], times = [];
+    for (let i = 0; i < N; i++) {
+      const t0 = performance.now();
+      const g = E.generate(d, { seed: 1000 + i * 7 });
+      times.push(performance.now() - t0);
+      clues.push(g.clues);
+      if (E.countSolutions(g.puzzle, 2) === 1) uniq++;
+      if (g.level >= spec.min && g.level <= spec.max) levelOk++;
+      if (E.logicalSolve(g.puzzle).solved) logical++;
+      let good = validFull(g.solution);
+      for (let k = 0; k < 81; k++) if (g.puzzle[k] && g.puzzle[k] !== g.solution[k]) good = false;
+      const s = E.solve(g.puzzle);
+      for (let k = 0; k < 81; k++) if (!s || s[k] !== g.solution[k]) good = false;
+      if (good) consistent++;
+    }
+    line(`[${d}] підказок ${Math.min(...clues)}–${Math.max(...clues)} (сер. ${avg(clues)}), ` +
+         `час сер. ${avg(times)}мс, макс ${Math.round(Math.max(...times))}мс`, 'info');
+    ok(uniq === N, `${d}: усі ${N} задач мають єдиний розвʼязок`);
+    ok(consistent === N, `${d}: solution збігається з умовою і є валідним`);
+    ok(levelOk === N, `${d}: рівень складності = ${want} (${levelOk}/${N})`);
+    const [lo, hi] = CLUE_BANDS[d];
+    ok(Math.min(...clues) >= lo && Math.max(...clues) <= hi,
+       `${d}: кількість підказок у межах ${lo}–${hi}`);
+    ok(avg(times) < 1500, `${d}: генерація швидша за 1.5с у середньому`);
+    ok(Math.max(...times) < 4000, `${d}: найдовша генерація швидша за 4с`);
+    if (d === 'easy' || d === 'medium') {
+      ok(logical === N, `${d}: розвʼязується без перебору, людськими техніками (${logical}/${N})`);
+    }
+  }
+
+  // ───────── повторюваність за seed ─────────
+  const a1 = E.generate('medium', { seed: 42 }).puzzle.join('');
+  const a2 = E.generate('medium', { seed: 42 }).puzzle.join('');
+  const a3 = E.generate('medium', { seed: 43 }).puzzle.join('');
+  ok(a1 === a2, 'однаковий seed -> однакова задача');
+  ok(a1 !== a3, 'інший seed -> інша задача');
+
+  // ───────── логіка партії ─────────
+  const G = window.SudokuGame;
+  const base = E.generate('easy', { seed: 7 });
+  const fresh = () => new G({ difficulty: 'easy', puzzle: base.puzzle, solution: base.solution });
+  const firstEmpty = base.puzzle.findIndex((v) => v === 0);
+  const firstGiven = base.puzzle.findIndex((v) => v !== 0);
+  const right = base.solution[firstEmpty];
+  const wrong = right === 9 ? 8 : right + 1;
+
+  let g = fresh();
+  ok(g.values.join('') === base.puzzle.join(''), 'нова партія починається з умови задачі');
+  ok(g.isGiven(firstGiven) && !g.isGiven(firstEmpty), 'клітинки умови позначені як задані');
+  ok(g.place(firstGiven, 5) === false && g.values[firstGiven] === base.puzzle[firstGiven],
+     'цифру умови змінити не можна');
+  ok(g.place(firstEmpty, wrong) && g.values[firstEmpty] === wrong, 'цифра ставиться у вільну клітинку');
+  ok(g.mistakes().has(firstEmpty), 'mistakes(): помилкову цифру видно');
+  ok(g.place(firstEmpty, wrong) && g.values[firstEmpty] === 0, 'повторний дотик тієї ж цифри стирає її');
+
+  g = fresh();
+  g.toggleNote(firstEmpty, 3); g.toggleNote(firstEmpty, 7);
+  ok(g.notesOf(firstEmpty).join(',') === '3,7', 'олівець записує кандидатів');
+  g.toggleNote(firstEmpty, 3);
+  ok(g.notesOf(firstEmpty).join(',') === '7', 'повторний дотик прибирає позначку');
+  g.place(firstEmpty, right);
+  ok(g.notesOf(firstEmpty).length === 0, 'цифра стирає олівець у своїй клітинці');
+  ok(g.undo() && g.notesOf(firstEmpty).join(',') === '7' && g.values[firstEmpty] === 0,
+     'скасування повертає і цифру, і олівець');
+
+  // олівець у сусідів чиститься автоматично
+  g = fresh();
+  const peer = E.PEERS[firstEmpty].find((p) => !g.isGiven(p) && !g.values[p]);
+  g.toggleNote(peer, right);
+  ok(g.hasNote(peer, right), 'позначку в сусідній клітинці поставлено');
+  g.place(firstEmpty, right);
+  ok(!g.hasNote(peer, right), 'поставлена цифра прибирає цю ж позначку в сусідів');
+  ok(g.undo() && g.hasNote(peer, right), 'скасування повертає прибрані позначки сусідів');
+
+  g = fresh();
+  const before = g.remaining(right);
+  g.place(firstEmpty, right);
+  ok(g.remaining(right) === before - 1, 'remaining(): лічильник цифри зменшується');
+  ok(g.erase(firstEmpty) && g.values[firstEmpty] === 0, 'стирачка звільняє клітинку');
+  ok(g.erase(firstGiven) === false, 'стирачка не чіпає цифри умови');
+
+  g = fresh();
+  const hintedAt = g.hint(firstEmpty);
+  ok(hintedAt === firstEmpty && g.values[firstEmpty] === right, 'підказка відкриває правильну цифру');
+  ok(g.hints === 1 && g.hinted.has(firstEmpty), 'підказки рахуються й позначаються');
+  g = fresh();
+  g.place(firstEmpty, wrong);
+  ok(g.hint(null) === firstEmpty && g.values[firstEmpty] === right, 'підказка спершу виправляє помилку');
+
+  g = fresh();
+  for (let i = 0; i < 81; i++) if (!g.isGiven(i)) g.place(i, base.solution[i]);
+  ok(g.done, 'заповнена правильно сітка -> партія завершена');
+  ok(g.place(firstEmpty, wrong) === false, 'після перемоги ходи заблоковані');
+  ok(g.conflicts().size === 0, 'у завершеній партії немає конфліктів');
+
+  g = fresh();
+  g.place(firstEmpty, wrong);
+  g.toggleNote(peer, 4);
+  g.elapsed = 12345;
+  const copy = G.restore(JSON.parse(JSON.stringify(g.serialize())));
+  ok(copy && copy.values.join('') === g.values.join('') && copy.notes.join(',') === g.notes.join(','),
+     'збереження і відновлення партії не втрачає стан');
+  ok(copy.difficulty === g.difficulty && copy.elapsed >= 12345, 'відновлюються складність і час');
+  ok(G.restore(null) === null && G.restore({ v: 1, puzzle: '123', solution: '', values: '', notes: '' }) === null,
+     'зіпсоване збереження відкидається');
+
+  g = fresh();
+  g.start(1000); g.pause(4000);
+  ok(g.time(9999) === 3000, 'секундомір рахує лише активний час');
+  g.start(5000);
+  ok(g.time(6000) === 4000, 'секундомір продовжує з накопиченого');
+
+  const s = document.getElementById('summary');
+  s.className = fails ? 'fail' : 'pass';
+  s.textContent = fails
+    ? `${fails} провалів із ${total} перевірок`
+    : `усі ${total} перевірок пройдено`;
+  document.title = (fails ? 'FAIL ' : 'PASS ') + `${total - fails}/${total}`;
+})();
+</script>
+</body>
+</html>

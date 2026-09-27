@@ -1,0 +1,353 @@
+<!DOCTYPE html>
+<html lang="uk">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex, nofollow">
+<title>Перевірка рушія змійки</title>
+<style>
+  body { margin: 0; padding: 2rem 1.25rem; background: #0d0b1f; color: #efe7dc;
+         font: 15px/1.6 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
+  h1 { font-size: 1.2rem; font-weight: 500; margin: 0 0 1.2rem; }
+  #summary { margin: 0 0 1.5rem; padding: .8rem 1rem; border-radius: 8px;
+             background: rgba(239,231,220,.06); }
+  #summary.pass { color: #bfe6b0; } #summary.fail { color: #e58a7a; }
+  .ok   { color: rgba(239,231,220,.55); }
+  .bad  { color: #e58a7a; font-weight: 700; }
+  .info { color: #f2b872; margin-top: 1rem; }
+  div { white-space: pre-wrap; }
+</style>
+</head>
+<body>
+<h1>Перевірка рушія змійки</h1>
+<p id="summary">виконую…</p>
+<div id="out"></div>
+
+<script src="snake-engine.js"></script>
+<script>
+(() => {
+  'use strict';
+  const E = window.SnakeEngine;
+  const G = E.SnakeGame;
+  const out = document.getElementById('out');
+  let fails = 0, total = 0;
+
+  const line = (text, cls) => {
+    const d = document.createElement('div');
+    d.className = cls || '';
+    d.textContent = text;
+    out.appendChild(d);
+  };
+  const ok = (cond, msg) => {
+    total++;
+    if (cond) line('ok   ' + msg, 'ok');
+    else { fails++; line('FAIL ' + msg, 'bad'); }
+  };
+
+  const LEVELS = ['calm', 'night', 'storm', 'abyss'];
+
+  // ───────── початковий стан ─────────
+  for (const lv of LEVELS) {
+    const g = G.create(lv, { seed: 11 });
+    const spec = E.LEVELS[lv];
+    ok(g.cols === spec.cols && g.rows === spec.rows, lv + ': поле потрібного розміру');
+    ok(g.length === E.START_LENGTH, lv + ': змійка починається з ' + E.START_LENGTH + ' ланок');
+    ok(new Set(g.snake).size === g.length, lv + ': ланки не накладаються');
+    ok(g.dir.x === 1 && g.dir.y === 0, lv + ': на початку рух праворуч');
+    ok(g.snake.every((i) => !g.isWall(i)), lv + ': змійка не стоїть у перешкоді');
+    ok(g.food != null && !g.snake.includes(g.food) && !g.isWall(g.food), lv + ': їжа на вільній клітинці');
+    ok(g.alive && !g.won && g.score === 0 && g.eaten === 0, lv + ': забіг починається з нуля');
+    ok(g.speed() === spec.tick, lv + ': перший крок має швидкість рівня');
+    ok(g.wrap === spec.wrap, lv + ': край поля поводиться як задано рівнем');
+  }
+
+  const abyss = G.create('abyss', { seed: 5 });
+  ok(abyss.walls.size === E.LEVELS.abyss.obstacles, 'безодня: перешкод стільки, скільки в рівні');
+  ok([...abyss.walls].every((i) => {
+    const x = abyss.xOf(i), y = abyss.yOf(i);
+    return x > 0 && y > 0 && x < abyss.cols - 1 && y < abyss.rows - 1
+        && Math.abs(y - ((abyss.rows / 2) | 0)) > 1;
+  }), 'безодня: перешкоди не на краю і не на стартовому рядку');
+  ok(G.create('calm', { seed: 5 }).walls.size === 0, 'на спокої перешкод немає');
+
+  // ───────── рух ─────────
+  {
+    const g = G.create('night', { seed: 3 });
+    const head = g.head, tail = g.snake[g.snake.length - 1];
+    const ev = g.step();
+    ok(ev === 'move' || ev === 'eat', 'крок повертає подію');
+    ok(g.head === head + 1, 'голова зсунулась на клітинку праворуч');
+    ok(!g.snake.includes(tail) || g.grow > 0, 'хвіст звільнив клітинку');
+    ok(g.steps === 1, 'кроки рахуються');
+  }
+
+  // ───────── повороти ─────────
+  {
+    const g = G.create('night', { seed: 3 });
+    ok(g.turn('left') === false, 'поворот назад у себе заборонений');
+    ok(g.turn('right') === false, 'той самий напрямок не приймається');
+    ok(g.turn('up') === true, 'поворот убік приймається');
+    ok(g.turn('down') === false, 'після повороту вгору не можна відразу вниз');
+    ok(g.turn('left') === true, 'другий поворот стає в чергу');
+    ok(g.turn('down') === false, 'у черзі максимум ' + E.MAX_QUEUE + ' поворотів');
+    const y0 = g.yOf(g.head);
+    g.step();
+    ok(g.yOf(g.head) === y0 - 1 && g.dir.y === -1, 'перший крок після повороту йде вгору');
+    g.step();
+    ok(g.dir.x === -1 && g.dir.y === 0, 'другий крок бере наступний поворот із черги');
+    ok(g.queue.length === 0, 'черга поворотів спорожніла');
+    ok(g.turn(2, 0) === false && g.turn(1, 1) === false && g.turn('нікуди') === false,
+       'зіпсований напрямок відкидається');
+  }
+
+  // ───────── край поля ─────────
+  {
+    const g = G.create('calm', { seed: 3 });     // wrap = true
+    let guard = 0;
+    while (g.xOf(g.head) !== g.cols - 1 && guard++ < 40) g.step();
+    ok(g.xOf(g.head) === g.cols - 1, 'дійшли до правого краю');
+    const y = g.yOf(g.head);
+    g.step();
+    ok(g.alive && g.xOf(g.head) === 0 && g.yOf(g.head) === y, 'на спокої край прозорий: вийшла — зайшла з іншого боку');
+  }
+  {
+    const g = G.create('storm', { seed: 3 });    // wrap = false
+    let ev = 'move', guard = 0;
+    while (ev !== 'wall' && guard++ < 60) ev = g.step();
+    ok(ev === 'wall', 'на штормі край поля вбиває');
+    ok(!g.alive && g.cause === 'wall', 'після удару забіг завершений і причина відома');
+    ok(g.step() === 'over' && g.turn('up') === false, 'після кінця кроки й повороти вже не діють');
+  }
+
+  // ───────── перешкода ─────────
+  {
+    const g = G.create('storm', { seed: 9 });
+    g.walls.add(g.head + 1);                     // ставимо блок просто перед носом
+    ok(g.step() === 'wall' && g.cause === 'wall', 'блок на шляху завершує забіг');
+  }
+
+  // ───────── їжа ─────────
+  {
+    const g = G.create('night', { seed: 3 });
+    g.food = g.head + 1;                         // покладемо їжу просто перед носом
+    const before = g.length;
+    const ev = g.step();
+    ok(ev === 'eat', 'наїзд на їжу дає подію eat');
+    ok(g.score === E.FOOD_POINTS && g.eaten === 1, 'їжа додає ' + E.FOOD_POINTS + ' очок');
+    ok(g.length === before + 1, 'перша ланка виростає відразу');
+    ok(g.food != null && !g.snake.includes(g.food), 'нова їжа зʼявилась на вільній клітинці');
+    g.step();
+    ok(g.length === before + E.FOOD_GROWTH, 'усього від їжі виростає ' + E.FOOD_GROWTH + ' ланки');
+    g.step();
+    ok(g.length === before + E.FOOD_GROWTH, 'після росту довжина тримається');
+    ok(g.speed() === E.LEVELS.night.tick - E.SPEEDUP, 'з їжею крок стає коротшим');
+  }
+  {
+    const g = G.create('calm', { seed: 3 });
+    g.eaten = 400;
+    ok(g.speed() === E.LEVELS.calm.minTick, 'швидкість не переходить межу рівня');
+  }
+
+  // ───────── зірка ─────────
+  {
+    const g = G.create('night', { seed: 4 });
+    for (let n = 0; n < E.STAR_EVERY; n++) {     // годуємо просто перед носом
+      let guard = 0;
+      g.food = nextFree(g);
+      while (g.head !== g.food && guard++ < 4) g.step();
+    }
+    ok(g.eaten === E.STAR_EVERY, 'зʼїли ' + E.STAR_EVERY + ' разів');
+    ok(g.star && g.star.ttl > 0, 'після кожної пʼятої їжі приходить зірка');
+
+    const before = g.length, score = g.score;
+    g.star = { cell: nextFree(g), ttl: E.STAR_TTL };
+    const ev = walkTo(g, g.star.cell);
+    ok(ev === 'star', 'наїзд на зірку дає подію star');
+    ok(g.score === score + E.STAR_POINTS, 'зірка додає ' + E.STAR_POINTS + ' очок');
+    ok(g.star === null, 'зірка зникає з поля');
+    ok(g.length >= before + E.STAR_GROWTH, 'від зірки змійка теж росте');
+  }
+  {
+    const g = G.create('calm', { seed: 4 });
+    g.star = { cell: g.idx(0, 0), ttl: 3 };      // у куток, щоб не наїхати випадково
+    g.step(); g.step();
+    ok(g.star && g.star.ttl === 1, 'зірка відлічує свій час');
+    g.step();
+    ok(g.star === null, 'зірка гасне, коли час вийшов');
+  }
+
+  // ───────── укус себе ─────────
+  {
+    const g = G.create('calm', { seed: 3 });
+    g.grow = 8;                                  // подовшаємо, щоб було що кусати
+    g.step(); g.step(); g.step();
+    g.turn('down'); g.step();
+    g.turn('left'); g.step();
+    g.turn('up');                                // цей крок і впирається у власний бік
+    const ev = g.step();
+    ok(ev === 'self' && g.cause === 'self', 'коло по собі завершує забіг укусом');
+    ok(!g.alive && new Set(g.snake).size === g.snake.length, 'у завершеному забігу ланки не накладені');
+  }
+  {
+    // Хвіст цього ж кроку зійде з місця — на його клітинку стати можна.
+    const g = new G({ level: 'calm', seed: 3, snake: [12, 11, 26, 27], dir: { x: 0, y: 1 }, food: 0 });
+    ok(g.grow === 0, 'змійка не в стані росту');
+    const ev = g.step();
+    ok(ev === 'move' && g.alive, 'крок на клітинку власного хвоста дозволений');
+  }
+
+  // ───────── пройдене поле ─────────
+  {
+    const g = fullBoardGame();
+    const ev = g.step();
+    ok(ev === 'won', 'заповнене поле завершує забіг перемогою');
+    ok(g.won && !g.alive && g.food == null, 'після перемоги поле повне і їжі більше немає');
+    ok(g.length === g.size, 'змійка займає все поле');
+  }
+
+  // ───────── збереження ─────────
+  {
+    const g = G.create('abyss', { seed: 8 });
+    g.step(); g.step();
+    g.turn('up'); g.step();
+    g.star = { cell: nextFree(g), ttl: 20 };
+    g.score = 130; g.eaten = 8; g.elapsed = 4321;
+    const copy = G.restore(JSON.parse(JSON.stringify(g.serialize())));
+    ok(copy && copy.snake.join(',') === g.snake.join(','), 'збереження не втрачає змійку');
+    ok(copy.food === g.food && [...copy.walls].sort().join(',') === [...g.walls].sort().join(','),
+       'відновлюються їжа й перешкоди');
+    ok(copy.star && copy.star.cell === g.star.cell && copy.star.ttl === g.star.ttl, 'відновлюється зірка');
+    ok(copy.level === g.level && copy.score === 130 && copy.eaten === 8 && copy.elapsed === 4321,
+       'відновлюються рівень, рахунок і час');
+    ok(copy.dir.x === g.dir.x && copy.dir.y === g.dir.y, 'відновлюється напрямок руху');
+    ok(copy.step() !== 'over', 'відновлений забіг можна продовжити');
+
+    const dead = G.create('storm', { seed: 2 });
+    dead.die('self');
+    const back = G.restore(dead.serialize());
+    ok(back && !back.alive && back.cause === 'self', 'завершений забіг відновлюється завершеним');
+  }
+  {
+    const base = G.create('calm', { seed: 8 }).serialize();
+    const broken = (patch) => G.restore(Object.assign({}, base, patch));
+    ok(G.restore(null) === null && G.restore({ v: 2 }) === null, 'порожнє й чуже збереження відкидається');
+    ok(broken({ level: 'нема' }) === null, 'невідомий рівень відкидається');
+    ok(broken({ snake: [] }) === null && broken({ snake: [1, 1, 2] }) === null,
+       'порожня змійка і дублі ланок відкидаються');
+    ok(broken({ snake: [1, 2, 99999] }) === null, 'ланка поза полем відкидається');
+    ok(broken({ dir: { x: 1, y: 1 } }) === null, 'кривий напрямок відкидається');
+    ok(broken({ food: -5 }) === null, 'їжа поза полем відкидається');
+    const noFood = broken({ food: null });
+    ok(noFood && noFood.food != null, 'збереження без їжі отримує нову їжу');
+  }
+
+  // ───────── час ─────────
+  {
+    const g = G.create('calm', { seed: 1 });
+    g.start(1000); g.pause(4000);
+    ok(g.time(9999) === 3000, 'секундомір рахує лише активний час');
+    g.start(5000);
+    ok(g.time(6000) === 4000, 'секундомір продовжує з накопиченого');
+    g.die('wall');
+    g.start(9000);
+    ok(g.runningSince === null, 'після кінця забігу секундомір не запускається');
+  }
+
+  // ───────── однакове зерно -> однакова гра ─────────
+  {
+    const run = (seed) => {
+      const g = G.create('abyss', { seed });
+      const path = [];
+      for (let k = 0; k < 40; k++) { if (k % 7 === 3) g.turn(k % 14 === 3 ? 'up' : 'down'); path.push(g.step() + ':' + g.head); }
+      return [...g.walls].join(',') + '|' + path.join(' ');
+    };
+    ok(run(77) === run(77), 'однакове зерно дає однаковий забіг');
+    ok(run(77) !== run(78), 'різні зерна дають різні забіги');
+  }
+
+  // ───────── довгі забіги: інваріанти ─────────
+  {
+    const TURNS = ['up', 'down', 'left', 'right'];
+    let games = 0, deaths = 0, eatenAll = 0, broken = 0, longest = 0;
+    for (const lv of LEVELS) {
+      for (let s = 0; s < 20; s++) {
+        const g = G.create(lv, { seed: s * 31 + 7 });
+        const rnd = E.mulberry32(s + 1);
+        games++;
+        for (let k = 0; k < 400 && g.alive; k++) {
+          if (rnd() < 0.25) g.turn(TURNS[(rnd() * 4) | 0]);
+          const ev = g.step();
+          if (!['move', 'eat', 'star', 'wall', 'self', 'won'].includes(ev)) broken++;
+          if (new Set(g.snake).size !== g.snake.length && g.alive) broken++;
+          if (g.snake.some((i) => g.isWall(i) || i < 0 || i >= g.size)) broken++;
+          if (g.food != null && (g.snake.includes(g.food) || g.isWall(g.food))) broken++;
+          if (g.star && (g.snake.includes(g.star.cell) || g.isWall(g.star.cell))) broken++;
+          // кожен крок голова зсувається рівно на сусідню клітинку
+          if (g.alive && g.snake.length > 1 && !neighbours(g, g.snake[0], g.snake[1])) broken++;
+        }
+        const stars = (g.score - g.eaten * E.FOOD_POINTS) / E.STAR_POINTS;
+        if (!Number.isInteger(stars) || stars < 0) broken++;
+        if (g.length + g.grow !== E.START_LENGTH + g.eaten * E.FOOD_GROWTH + stars * E.STAR_GROWTH) broken++;
+        if (!g.alive) deaths++;
+        eatenAll += g.eaten;
+        longest = Math.max(longest, g.length);
+      }
+    }
+    ok(broken === 0, 'у ' + games + ' забігах жодного порушення правил поля');
+    ok(eatenAll > 0, 'випадкові забіги встигають щось зʼїсти (усього ' + eatenAll + ')');
+    line('забігів ' + games + ', завершилось смертю ' + deaths + ', найдовша змійка ' + longest, 'info');
+  }
+
+  /* ───────── допоміжне ───────── */
+
+  function neighbours(g, a, b) {
+    const dx = Math.abs(g.xOf(a) - g.xOf(b)), dy = Math.abs(g.yOf(a) - g.yOf(b));
+    const wx = g.wrap ? Math.min(dx, g.cols - dx) : dx;
+    const wy = g.wrap ? Math.min(dy, g.rows - dy) : dy;
+    return wx + wy === 1;
+  }
+
+  // Вільна клітинка просто перед головою (по ходу руху)
+  function nextFree(g) {
+    const x = (g.xOf(g.head) + g.dir.x + g.cols) % g.cols;
+    const y = (g.yOf(g.head) + g.dir.y + g.rows) % g.rows;
+    const i = g.idx(x, y);
+    if (!g.snake.includes(i) && !g.isWall(i)) return i;
+    return g.free()[0];
+  }
+
+  // Доводить змійку до клітинки по прямій (для перевірок, де шлях вільний)
+  function walkTo(g, cell) {
+    let ev = 'move', guard = 0;
+    while (g.head !== cell && g.alive && guard++ < 6) ev = g.step();
+    return ev;
+  }
+
+  // Змійка на все поле, крім однієї клітинки, де лежить їжа
+  function fullBoardGame() {
+    const spec = E.LEVELS.calm;
+    const path = [];
+    for (let y = 0; y < spec.rows; y++) {
+      for (let k = 0; k < spec.cols; k++) {
+        const x = y % 2 ? spec.cols - 1 - k : k;
+        path.push(y * spec.cols + x);
+      }
+    }
+    const food = path.pop();
+    const snake = path.reverse();                // голова — сусід останньої клітинки
+    const g = new G({ level: 'calm', seed: 1, snake, dir: { x: 1, y: 0 }, food, walls: [] });
+    const dx = g.xOf(food) - g.xOf(g.head), dy = g.yOf(food) - g.yOf(g.head);
+    g.dir = { x: dx, y: dy };
+    return g;
+  }
+
+  const s = document.getElementById('summary');
+  s.className = fails ? 'fail' : 'pass';
+  s.textContent = fails
+    ? `${fails} провалів із ${total} перевірок`
+    : `усі ${total} перевірок пройдено`;
+  document.title = (fails ? 'FAIL ' : 'PASS ') + `${total - fails}/${total}`;
+})();
+</script>
+</body>
+</html>

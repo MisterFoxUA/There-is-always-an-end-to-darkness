@@ -1,0 +1,831 @@
+<!DOCTYPE html>
+<html lang="uk">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+
+<meta name="robots" content="noindex, nofollow, noarchive, nosnippet, noimageindex, notranslate">
+<meta name="googlebot" content="noindex, nofollow">
+<meta name="bingbot" content="noindex, nofollow">
+<meta name="referrer" content="no-referrer">
+<meta name="theme-color" content="#0d0b1f">
+
+<title>Змійка</title>
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🕯️</text></svg>">
+
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Caveat:wght@400;500&family=Cormorant+Garamond:ital,wght@0,300;0,400;0,500;1,300;1,400&display=swap&subset=cyrillic" rel="stylesheet">
+
+<style>
+  :root {
+    --night: #0d0b1f;
+    --bone: #efe7dc;
+    --bone-dim: rgba(239, 231, 220, .56);
+    --bone-faint: rgba(239, 231, 220, .28);
+    --candle: #f2b872;
+    --rose: #e58a7a;
+    --moon: #b9c6ec;
+    --moss: #a9c8a8;
+
+    --serif: 'Cormorant Garamond', 'Cormorant', Georgia, 'Times New Roman', serif;
+    --hand: 'Caveat', 'Segoe Print', 'Bradley Hand', cursive;
+
+    --line-bold: rgba(239, 231, 220, .5);
+
+    box-sizing: border-box;
+  }
+  *, *::before, *::after { box-sizing: inherit; }
+
+  html, body { margin: 0; min-height: 100%; }
+  body {
+    background: var(--night);
+    color: var(--bone);
+    font-family: var(--serif);
+    -webkit-font-smoothing: antialiased;
+    overflow-x: hidden;
+    -webkit-tap-highlight-color: transparent;
+    padding: max(1rem, env(safe-area-inset-top)) 1rem max(1.5rem, env(safe-area-inset-bottom));
+  }
+
+  .sky-base {
+    position: fixed; inset: 0; z-index: 0; pointer-events: none;
+    background: radial-gradient(120% 80% at 50% 0%, #15112d 0%, var(--night) 55%, #08071a 100%);
+  }
+  #sky { position: fixed; inset: 0; z-index: 1; display: block; pointer-events: none; }
+  .glow {
+    position: fixed; left: 50%; bottom: -58vh; z-index: 0; pointer-events: none;
+    width: 170vmax; height: 90vh; transform: translateX(-50%) scale(.7);
+    border-radius: 50%; opacity: .45;
+    background: radial-gradient(closest-side, rgba(242,184,114,.3), rgba(229,138,122,.1) 55%, transparent 100%);
+    transition: opacity 3s ease, transform 4s cubic-bezier(.2,.7,.1,1);
+  }
+  body.won .glow { opacity: 1; transform: translateX(-50%) scale(1.2); }
+  .grain {
+    position: fixed; inset: -50%; z-index: 2; pointer-events: none; opacity: .06;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.9' numOctaves='2' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+  }
+
+  main {
+    position: relative; z-index: 3;
+    max-width: 34rem; margin: 0 auto;
+    display: flex; flex-direction: column; align-items: center;
+    gap: clamp(.8rem, 2.2vh, 1.3rem);
+  }
+
+  /* ───────── шапка ───────── */
+
+  header { width: 100%; text-align: center; position: relative; }
+  .back {
+    position: absolute; left: 0; top: .2rem;
+    color: var(--bone-faint); text-decoration: none;
+    font-style: italic; font-size: 1rem;
+    transition: color .4s ease;
+  }
+  .back:hover, .back:focus-visible { color: var(--candle); }
+  h1 {
+    margin: 0; font-weight: 300; font-style: italic;
+    font-size: clamp(1.7rem, 6vw, 2.4rem); line-height: 1.1;
+  }
+  .tagline {
+    margin: .35rem 0 0; font-family: var(--hand);
+    font-size: 1.2rem; color: var(--bone-dim);
+  }
+
+  /* ───────── рівні й лічильники ───────── */
+
+  .bar { width: 100%; display: flex; flex-direction: column; align-items: center; gap: .55rem; }
+  .levels { display: flex; flex-wrap: wrap; justify-content: center; gap: .3rem; }
+  .level {
+    appearance: none; background: none; cursor: pointer;
+    border: 1px solid transparent; border-radius: 999px;
+    padding: .3em .85em .38em;
+    color: var(--bone-dim); font-family: var(--serif); font-style: italic;
+    font-size: clamp(.95rem, 3.4vw, 1.08rem);
+    transition: color .35s ease, border-color .35s ease, background .35s ease;
+  }
+  .level:hover, .level:focus-visible { color: var(--bone); }
+  .level[aria-pressed="true"] {
+    color: #ffe6c4; border-color: rgba(242,184,114,.4);
+    background: rgba(242,184,114,.1);
+  }
+  .meta {
+    margin: 0;
+    font-size: .95rem; color: var(--bone-faint); font-style: italic;
+    display: flex; gap: .6rem; flex-wrap: wrap; justify-content: center;
+  }
+  .meta b {
+    font-weight: 500; font-style: normal; color: var(--bone-dim);
+    font-variant-numeric: lining-nums tabular-nums;
+    font-feature-settings: 'lnum' 1, 'tnum' 1;
+  }
+
+  /* ───────── поле ───────── */
+
+  .board-wrap { position: relative; line-height: 0; }
+  #board {
+    display: block;
+    border: 1px solid var(--line-bold);
+    border-radius: 6px;
+    background: rgba(24, 20, 48, .5);
+    box-shadow: 0 30px 60px -30px rgba(0,0,0,.85);
+    touch-action: none;
+    transition: opacity .4s ease, filter .4s ease;
+  }
+  body.paused #board { opacity: .5; filter: blur(2px); }
+
+  /* Підпис поверх поля: «натисни стрілку», «пауза» */
+  .veil {
+    position: absolute; inset: 0; z-index: 4;
+    display: none; place-items: center; text-align: center;
+    padding: 1rem; line-height: 1.4;
+    font-style: italic; color: var(--bone-dim);
+    font-size: clamp(1rem, 4vw, 1.2rem);
+    pointer-events: none;
+  }
+  .veil.on { display: grid; }
+
+  /* ───────── стрілки й кнопки ───────── */
+
+  #pad {
+    display: grid; gap: .35rem;
+    grid-template-columns: repeat(3, minmax(3.2rem, 4.4rem));
+    grid-template-areas: ".  up ." "left down right";
+    justify-content: center;
+  }
+  .key {
+    appearance: none; cursor: pointer;
+    background: rgba(239, 231, 220, .05);
+    border: 1px solid rgba(239, 231, 220, .12);
+    border-radius: 8px;
+    color: var(--bone);
+    font-family: var(--serif); font-size: clamp(1.2rem, 5vw, 1.5rem);
+    line-height: 1; padding: .5em 0 .55em;
+    transition: background .25s ease, border-color .25s ease;
+  }
+  .key:hover, .key:focus-visible { background: rgba(242, 184, 114, .12); border-color: rgba(242,184,114,.35); }
+  .key:active { background: rgba(242, 184, 114, .2); }
+  #d-up { grid-area: up; } #d-down { grid-area: down; }
+  #d-left { grid-area: left; } #d-right { grid-area: right; }
+
+  .tools { width: 100%; display: flex; flex-wrap: wrap; gap: .4rem; justify-content: center; }
+  .tool {
+    appearance: none; cursor: pointer;
+    background: none; border: 1px solid rgba(239, 231, 220, .14);
+    border-radius: 999px; padding: .42em 1em .5em;
+    color: var(--bone-dim); font-family: var(--serif); font-style: italic;
+    font-size: clamp(.95rem, 3.6vw, 1.05rem);
+    transition: color .3s ease, border-color .3s ease, background .3s ease;
+  }
+  .tool:hover, .tool:focus-visible { color: var(--bone); border-color: var(--bone-faint); }
+  .tool[aria-pressed="true"] {
+    color: #dce4ff; border-color: rgba(185,198,236,.45); background: rgba(185,198,236,.12);
+  }
+  .tool:disabled { opacity: .35; cursor: default; }
+
+  .hint-note {
+    margin: 0; min-height: 1.4em; text-align: center;
+    font-size: .95rem; font-style: italic; color: var(--bone-faint);
+  }
+
+  /* ───────── правила ───────── */
+
+  details.rules {
+    width: 100%; max-width: 30rem;
+    border-top: 1px solid rgba(239, 231, 220, .1);
+    padding-top: .9rem;
+  }
+  details.rules summary {
+    cursor: pointer; list-style: none;
+    color: var(--bone-dim); font-style: italic; font-size: 1rem;
+  }
+  details.rules summary::-webkit-details-marker { display: none; }
+  details.rules summary::before { content: "· "; color: var(--candle); }
+  details.rules div { margin-top: .7rem; font-size: 1rem; line-height: 1.6; color: var(--bone-dim); }
+  details.rules p { margin: 0 0 .6em; }
+  details.rules b { color: var(--bone); font-weight: 500; }
+
+  /* ───────── кінець забігу ───────── */
+
+  #over {
+    position: fixed; inset: 0; z-index: 30;
+    display: none; place-items: center;
+    padding: 1.5rem;
+    background: rgba(9, 8, 22, .72);
+    -webkit-backdrop-filter: blur(6px); backdrop-filter: blur(6px);
+    opacity: 0; transition: opacity .8s ease;
+  }
+  #over.on { display: grid; }
+  #over.shown { opacity: 1; }
+  .over-card { text-align: center; max-width: 24rem; }
+  .over-card p.title {
+    margin: 0; font-style: italic; font-weight: 300;
+    font-size: clamp(1.8rem, 7vw, 2.6rem); line-height: 1.15;
+  }
+  .over-card p.sub { margin: 1rem 0 0; color: var(--bone-dim); font-style: italic; }
+  .over-card .row { margin-top: 1.8rem; display: flex; gap: .6rem; justify-content: center; flex-wrap: wrap; }
+
+  @media (prefers-reduced-motion: reduce) {
+    *, *::before, *::after { animation-duration: .01ms !important; transition-duration: .2s !important; }
+  }
+  noscript p { position: relative; z-index: 5; text-align: center; font-style: italic; color: var(--bone-dim); }
+</style>
+</head>
+<body>
+
+<div class="sky-base" aria-hidden="true"></div>
+<canvas id="sky" aria-hidden="true"></canvas>
+<div class="glow" aria-hidden="true"></div>
+<div class="grain" aria-hidden="true"></div>
+
+<noscript><p>Ця сторінка відкривається лише з увімкненим JavaScript.</p></noscript>
+
+<main>
+  <header>
+    <a class="back" href="index.html">← назад</a>
+    <h1>Змійка</h1>
+    <p class="tagline">Повзи собі в темряві й збирай вогники. Куди тут спішити.</p>
+  </header>
+
+  <section class="bar">
+    <div class="levels" id="levels" role="group" aria-label="Рівень"></div>
+    <p class="meta">
+      <span>рахунок <b id="score">0</b></span>
+      <span>довжина <b id="len">3</b></span>
+      <span id="best-wrap" hidden>найбільше <b id="best">—</b></span>
+    </p>
+  </section>
+
+  <div class="board-wrap">
+    <canvas id="board" aria-label="Поле змійки" role="img"></canvas>
+    <p class="veil" id="veil"></p>
+  </div>
+
+  <div id="pad" role="group" aria-label="Керування">
+    <button class="key" type="button" id="d-up" aria-label="вгору">↑</button>
+    <button class="key" type="button" id="d-left" aria-label="вліво">←</button>
+    <button class="key" type="button" id="d-down" aria-label="вниз">↓</button>
+    <button class="key" type="button" id="d-right" aria-label="вправо">→</button>
+  </div>
+
+  <div class="tools">
+    <button class="tool" type="button" id="t-pause" aria-pressed="false">пауза</button>
+    <button class="tool" type="button" id="t-new">нова</button>
+  </div>
+
+  <p class="hint-note" id="note" aria-live="polite"></p>
+
+  <details class="rules">
+    <summary>Як грати</summary>
+    <div>
+      <p>Змійка повзе сама й не спиняється. Стрілки, <b>WASD</b> або свайп по полю — повертають її.
+         Назад у себе повернути не можна.</p>
+      <p>Теплий вогник — це <b>їжа</b>: +10 і дві нові ланки. Кожна пʼята їжа кличе на поле
+         <b>зірку</b>: +50, але вона гасне через кілька секунд.</p>
+      <p>Кінець — коли змійка вкусила саму себе або вʼїхала в перешкоду. На «спокої» та «ночі»
+         край поля прозорий: вийшла з одного боку — заходь з іншого. На «штормі» й «безодні»
+         край — це стіна, а в «безодні» ще й блоки всередині.</p>
+      <p><b>Пробіл</b> — пауза. Забіг сам зберігається: можна закрити сторінку й повернутись.</p>
+    </div>
+  </details>
+</main>
+
+<div id="over" role="dialog" aria-modal="true" aria-labelledby="over-title">
+  <div class="over-card">
+    <p class="title" id="over-title">Все.</p>
+    <p class="sub" id="over-sub"></p>
+    <div class="row">
+      <button class="tool" type="button" id="o-again">ще раз</button>
+      <button class="tool" type="button" id="o-close">подивитись на поле</button>
+    </div>
+  </div>
+</div>
+
+<script src="snake-engine.js"></script>
+<script>
+(() => {
+  'use strict';
+
+  const E = window.SnakeEngine;
+  const Game = E.SnakeGame;
+  const $ = (id) => document.getElementById(id);
+
+  const LEVELS = [
+    ['calm', 'спокій'],
+    ['night', 'ніч'],
+    ['storm', 'шторм'],
+    ['abyss', 'безодня']
+  ];
+  const STORE_KEY = 'etd-snake';
+
+  const store = {
+    read() {
+      try { return JSON.parse(localStorage.getItem(STORE_KEY)) || {}; } catch { return {}; }
+    },
+    write(data) {
+      try { localStorage.setItem(STORE_KEY, JSON.stringify(data)); } catch {}
+    }
+  };
+
+  let saved = store.read();
+  if (!saved.best) saved.best = {};
+  if (!saved.runs) saved.runs = {};
+
+  let level = LEVELS.some(([k]) => k === saved.level) ? saved.level : 'calm';
+  let game = null;
+  let state = 'idle';          // 'idle' | 'run' | 'pause' | 'over'
+  let auto = true;             // чи рухає змійку таймер (перевірки крокують самі)
+  let eatFlash = 0;            // мить після їжі, для підсвітки
+  let prevSnake = null;        // де ланки стояли до останнього кроку — для плавного руху
+
+  /* ───────── зорі на тлі ───────── */
+  (() => {
+    const canvas = $('sky');
+    const ctx = canvas.getContext('2d');
+    const reduce = matchMedia('(prefers-reduced-motion: reduce)').matches;
+    let w = 0, h = 0, stars = [];
+    function resize() {
+      const dpr = Math.min(devicePixelRatio || 1, 2);
+      w = innerWidth; h = innerHeight;
+      canvas.width = w * dpr; canvas.height = h * dpr;
+      canvas.style.width = w + 'px'; canvas.style.height = h + 'px';
+      ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+      stars = Array.from({ length: Math.min(Math.round(w * h / 7000), 260) }, () => ({
+        x: Math.random() * w, y: Math.random() * h,
+        r: Math.random() * .95 + .2, ph: Math.random() * 6.28,
+        sp: .3 + Math.random() * 1.1, d: .2 + Math.random() * .8
+      }));
+    }
+    function frame(t) {
+      ctx.clearRect(0, 0, w, h);
+      for (const s of stars) {
+        const tw = reduce ? .8 : .5 + .5 * Math.sin(t * .001 * s.sp + s.ph);
+        ctx.fillStyle = `rgba(232,236,255,${(.2 + .7 * tw) * s.d * .8})`;
+        ctx.beginPath(); ctx.arc(s.x, s.y, s.r, 0, 6.283); ctx.fill();
+      }
+      requestAnimationFrame(frame);
+    }
+    addEventListener('resize', resize, { passive: true });
+    resize();
+    requestAnimationFrame(frame);
+  })();
+
+  /* ───────── рівні ───────── */
+  const levelBtns = new Map();
+  for (const [key, label] of LEVELS) {
+    const b = document.createElement('button');
+    b.type = 'button';
+    b.className = 'level';
+    b.textContent = label;
+    b.setAttribute('aria-pressed', String(key === level));
+    b.addEventListener('click', () => pickLevel(key));
+    levelBtns.set(key, b);
+    $('levels').appendChild(b);
+  }
+  const levelName = (key) => (LEVELS.find(([k]) => k === key) || [, key])[1];
+
+  function pickLevel(key) {
+    if (key === level && state !== 'over') return;
+    level = key;
+    for (const [k, b] of levelBtns) b.setAttribute('aria-pressed', String(k === level));
+    closeOver();
+    const run = saved.runs[level] && Game.restore(saved.runs[level]);
+    if (run && run.alive) { adopt(run); note('забіг на «' + levelName(level) + '» продовжується'); }
+    else newGame();
+    persist();
+  }
+
+  /* ───────── поле ───────── */
+  const canvas = $('board');
+  const ctx = canvas.getContext('2d');
+  let cell = 20;
+
+  function layout() {
+    if (!game) return;
+    const avail = Math.min(document.querySelector('main').clientWidth, 520);
+    const byHeight = Math.floor((innerHeight * 0.56) / game.rows);
+    cell = Math.max(10, Math.min(30, Math.floor(avail / game.cols), byHeight || 30));
+    const w = cell * game.cols, h = cell * game.rows;
+    const dpr = Math.min(devicePixelRatio || 1, 2);
+    canvas.width = Math.round(w * dpr); canvas.height = Math.round(h * dpr);
+    canvas.style.width = w + 'px'; canvas.style.height = h + 'px';
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  }
+
+  function roundRect(x, y, w, h, r) {
+    ctx.beginPath();
+    if (ctx.roundRect) ctx.roundRect(x, y, w, h, r);
+    else {
+      const rr = Math.min(r, w / 2, h / 2);
+      ctx.moveTo(x + rr, y);
+      ctx.arcTo(x + w, y, x + w, y + h, rr);
+      ctx.arcTo(x + w, y + h, x, y + h, rr);
+      ctx.arcTo(x, y + h, x, y, rr);
+      ctx.arcTo(x, y, x + w, y, rr);
+      ctx.closePath();
+    }
+  }
+
+  // теплий (голова) -> місячний (хвіст).
+  // Кольори навмисно непрозорі: ланки малюються однією лінією і накладаються,
+  // а з прозорістю на стиках проступали б темніші намистини.
+  const BOARD_INK = [22, 18, 44];
+  function segColor(k, n) {
+    const t = n < 2 ? 0 : k / (n - 1);
+    const a = [242, 184, 114], b = [132, 146, 202];
+    const bright = 1 - 0.3 * t;
+    const mix = a.map((v, i) => {
+      const c = v + (b[i] - v) * t;
+      return Math.round(BOARD_INK[i] + (c - BOARD_INK[i]) * bright);
+    });
+    return `rgb(${mix[0]},${mix[1]},${mix[2]})`;
+  }
+
+  /* Де малювати ланки просто зараз: p — частина такту, що вже минула (0..1).
+     Змійка їде між клітинками, а не стрибає по них. */
+  function bodyPoints(p) {
+    const cur = game.snake;
+    const prev = prevSnake && prevSnake.length ? prevSnake : cur;
+    const pts = [];
+    for (let k = 0; k < cur.length; k++) {
+      const to = cur[k];
+      const from = k < prev.length ? prev[k] : to;   // нова ланка одразу стоїть на місці
+      const fx = game.xOf(from), fy = game.yOf(from);
+      let dx = game.xOf(to) - fx, dy = game.yOf(to) - fy;
+      if (game.wrap) {                                // через край — найкоротшим шляхом
+        if (Math.abs(dx) > game.cols / 2) dx -= Math.sign(dx) * game.cols;
+        if (Math.abs(dy) > game.rows / 2) dy -= Math.sign(dy) * game.rows;
+      }
+      let x = fx + dx * p, y = fy + dy * p;
+      if (game.wrap) {
+        x = ((x % game.cols) + game.cols) % game.cols;
+        y = ((y % game.rows) + game.rows) % game.rows;
+      }
+      pts.push({ x: (x + 0.5) * cell, y: (y + 0.5) * cell });
+    }
+    return pts;
+  }
+
+  // Лінія між сусідніми ланками; якщо вона йде через край поля — малюємо обидві половини
+  function strokeLink(a, b) {
+    const w = cell * game.cols, h = cell * game.rows;
+    let dx = b.x - a.x, dy = b.y - a.y;
+    if (game.wrap) {
+      if (Math.abs(dx) > w / 2) dx -= Math.sign(dx) * w;
+      if (Math.abs(dy) > h / 2) dy -= Math.sign(dy) * h;
+    }
+    ctx.beginPath(); ctx.moveTo(a.x, a.y); ctx.lineTo(a.x + dx, a.y + dy); ctx.stroke();
+    if (Math.abs(a.x + dx - b.x) > 0.5 || Math.abs(a.y + dy - b.y) > 0.5) {
+      ctx.beginPath(); ctx.moveTo(b.x - dx, b.y - dy); ctx.lineTo(b.x, b.y); ctx.stroke();
+    }
+  }
+
+  function draw(t, p) {
+    if (!game) return;
+    const w = cell * game.cols, h = cell * game.rows;
+    ctx.clearRect(0, 0, w, h);
+
+    ctx.fillStyle = 'rgba(22, 18, 44, .62)';
+    ctx.fillRect(0, 0, w, h);
+
+    // сітка
+    ctx.strokeStyle = 'rgba(239,231,220,.05)';
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    for (let x = 1; x < game.cols; x++) { ctx.moveTo(x * cell + .5, 0); ctx.lineTo(x * cell + .5, h); }
+    for (let y = 1; y < game.rows; y++) { ctx.moveTo(0, y * cell + .5); ctx.lineTo(w, y * cell + .5); }
+    ctx.stroke();
+
+    // стіна по краю, якщо крізь неї не пройти
+    if (!game.wrap) {
+      ctx.strokeStyle = 'rgba(229,138,122,.35)';
+      ctx.lineWidth = 2;
+      ctx.strokeRect(1, 1, w - 2, h - 2);
+    }
+
+    // перешкоди
+    ctx.fillStyle = 'rgba(239,231,220,.13)';
+    for (const i of game.walls) {
+      roundRect(game.xOf(i) * cell + 2, game.yOf(i) * cell + 2, cell - 4, cell - 4, 3);
+      ctx.fill();
+    }
+
+    // їжа: теплий вогник, що дихає
+    if (game.food != null) {
+      const pulse = 0.5 + 0.5 * Math.sin(t * 0.004);
+      const cx = game.xOf(game.food) * cell + cell / 2;
+      const cy = game.yOf(game.food) * cell + cell / 2;
+      const r = cell * (0.24 + 0.05 * pulse);
+      const glow = ctx.createRadialGradient(cx, cy, 0, cx, cy, cell * 1.1);
+      glow.addColorStop(0, 'rgba(229,138,122,.5)');
+      glow.addColorStop(1, 'rgba(229,138,122,0)');
+      ctx.fillStyle = glow;
+      ctx.fillRect(cx - cell * 1.1, cy - cell * 1.1, cell * 2.2, cell * 2.2);
+      ctx.fillStyle = `rgba(255,214,190,${0.75 + 0.25 * pulse})`;
+      ctx.beginPath(); ctx.arc(cx, cy, r, 0, 6.283); ctx.fill();
+    }
+
+    // зірка: гасне, коли добігає її час
+    if (game.star) {
+      const life = Math.min(1, game.star.ttl / E.STAR_TTL);
+      const cx = game.xOf(game.star.cell) * cell + cell / 2;
+      const cy = game.yOf(game.star.cell) * cell + cell / 2;
+      const r = cell * 0.4;
+      const blink = game.star.ttl > 10 ? 1 : 0.35 + 0.65 * Math.abs(Math.sin(t * 0.012));
+      ctx.fillStyle = `rgba(255,236,200,${(0.35 + 0.6 * life) * blink})`;
+      ctx.beginPath();
+      for (let k = 0; k < 8; k++) {
+        const ang = -Math.PI / 2 + (k * Math.PI) / 4;
+        const rad = k % 2 ? r * 0.42 : r;
+        const px = cx + Math.cos(ang) * rad, py = cy + Math.sin(ang) * rad;
+        if (k === 0) ctx.moveTo(px, py); else ctx.lineTo(px, py);
+      }
+      ctx.closePath(); ctx.fill();
+    }
+
+    // змійка — суцільною стрічкою від хвоста до голови
+    const pts = bodyPoints(p);
+    const n = pts.length;
+    ctx.lineCap = 'round';
+    ctx.lineJoin = 'round';
+    ctx.lineWidth = cell * 0.74;
+    for (let k = n - 1; k > 0; k--) {
+      ctx.strokeStyle = segColor(k, n);
+      strokeLink(pts[k], pts[k - 1]);
+    }
+
+    // голова: світло навколо і двоє очей у бік руху.
+    // Коли вона на краю прозорого поля — малюємо її двічі, щоб половина
+    // виїжджала з одного боку рівно тоді, коли друга заїжджає з іншого.
+    const hx = pts[0].x, hy = pts[0].y;
+    const shifts = [[0, 0]];
+    if (game.wrap) {
+      if (hx < cell) shifts.push([w, 0]);
+      else if (hx > w - cell) shifts.push([-w, 0]);
+      if (hy < cell) shifts.push([0, h]);
+      else if (hy > h - cell) shifts.push([0, -h]);
+    }
+
+    for (const [ox, oy] of shifts) {
+      const x = hx + ox, y = hy + oy;
+
+      const halo = ctx.createRadialGradient(x, y, 0, x, y, cell * (1.4 + eatFlash));
+      halo.addColorStop(0, `rgba(242,184,114,${0.3 + 0.35 * eatFlash})`);
+      halo.addColorStop(1, 'rgba(242,184,114,0)');
+      ctx.fillStyle = halo;
+      ctx.fillRect(x - cell * 2, y - cell * 2, cell * 4, cell * 4);
+
+      ctx.fillStyle = segColor(0, n);
+      ctx.beginPath(); ctx.arc(x, y, cell * 0.39, 0, 6.283); ctx.fill();
+
+      if (game.alive && cell >= 14) {
+        const d = game.dir;
+        const ex = -d.y * cell * 0.18, ey = d.x * cell * 0.18;
+        const fx = d.x * cell * 0.12, fy = d.y * cell * 0.12;
+        ctx.fillStyle = 'rgba(13,11,31,.75)';
+        for (const s of [1, -1]) {
+          ctx.beginPath();
+          ctx.arc(x + fx + ex * s, y + fy + ey * s, Math.max(1.1, cell * 0.075), 0, 6.283);
+          ctx.fill();
+        }
+      }
+
+      if (!game.alive && !game.won) {
+        ctx.fillStyle = 'rgba(229,138,122,.28)';
+        ctx.beginPath(); ctx.arc(x, y, cell * 0.5, 0, 6.283); ctx.fill();
+      }
+    }
+  }
+
+  /* ───────── стан і підписи ───────── */
+  function renderMeta() {
+    $('score').textContent = String(game.score);
+    $('len').textContent = String(game.length);
+    const best = saved.best[level] || 0;
+    $('best-wrap').hidden = !best;
+    $('best').textContent = String(best);
+    $('t-pause').setAttribute('aria-pressed', String(state === 'pause'));
+    $('t-pause').disabled = state === 'over';
+    document.body.classList.toggle('paused', state === 'pause');
+    document.body.classList.toggle('won', !!game.won);
+
+    const veil = $('veil');
+    if (state === 'idle') { veil.className = 'veil on'; veil.textContent = 'стрілка або свайп — і поїхали'; }
+    else if (state === 'pause') { veil.className = 'veil on'; veil.textContent = 'пауза'; }
+    else { veil.className = 'veil'; veil.textContent = ''; }
+  }
+
+  const note = (text) => { $('note').textContent = text; };
+
+  function adopt(g) {
+    game = g;
+    state = g.alive ? 'idle' : 'over';
+    eatFlash = 0;
+    prevSnake = g.snake.slice();   // нова партія не має «доїжджати» зі старого місця
+    layout();
+    renderMeta();
+    if (!g.alive) showOver();
+  }
+
+  function newGame() {
+    adopt(Game.create(level));
+    note('');
+    delete saved.runs[level];
+    persist();
+  }
+
+  function begin() {
+    if (state !== 'idle' || !game.alive) return;
+    state = 'run';
+    game.start();
+    note('');
+    renderMeta();
+  }
+
+  function setPause(on) {
+    if (state === 'over' || state === 'idle') return;
+    if (on && state === 'run') { state = 'pause'; game.pause(); persist(); }
+    else if (!on && state === 'pause') { state = 'run'; game.start(); }
+    renderMeta();
+  }
+
+  function fmt(ms) {
+    const s = Math.floor(ms / 1000);
+    return Math.floor(s / 60) + ':' + String(s % 60).padStart(2, '0');
+  }
+
+  function finish() {
+    state = 'over';
+    const best = saved.best[level] || 0;
+    const record = game.score > best;
+    if (record) saved.best[level] = game.score;
+    delete saved.runs[level];
+    persist();
+    renderMeta();
+
+    $('over-title').textContent = game.won ? 'Поле пройдено.' : (record && game.score > 0 ? 'Найбільше досі.' : 'Все.');
+    const tail = [
+      game.score + ' очок',
+      'довжина ' + game.length,
+      fmt(game.time())
+    ];
+    if (!game.won) tail.push(game.cause === 'wall' ? 'вʼїхала у стіну' : 'вкусила себе');
+    if (record && !game.won && game.score > 0) tail.push('новий рекорд');
+    $('over-sub').textContent = tail.join(' · ');
+    showOver();
+  }
+
+  function showOver() {
+    const box = $('over');
+    box.classList.add('on');
+    requestAnimationFrame(() => box.classList.add('shown'));
+    $('o-again').focus({ preventScroll: true });
+  }
+
+  function closeOver() {
+    const box = $('over');
+    box.classList.remove('shown');
+    box.classList.remove('on');
+  }
+
+  function persist() {
+    saved.level = level;
+    if (game && game.alive && game.steps > 0) saved.runs[level] = game.serialize();
+    store.write(saved);
+  }
+
+  /* ───────── крок і цикл ───────── */
+  function tick() {
+    if (state !== 'run') return 'over';
+    prevSnake = game.snake.slice();
+    const ev = game.step();
+    if (ev === 'eat' || ev === 'star') {
+      eatFlash = 1;
+      if (ev === 'star') note('зірка: +' + E.STAR_POINTS);
+      else if (game.star) note('на полі зірка — встигни');
+      else note('');
+      persist();
+    } else if (ev === 'wall' || ev === 'self' || ev === 'won') {
+      finish();
+    } else if (game.steps % 16 === 0) {
+      persist();
+    }
+    renderMeta();
+    return ev;
+  }
+
+  let last = 0, acc = 0;
+  function frame(t) {
+    if (!last) last = t;
+    const dt = Math.min(250, t - last);
+    last = t;
+    if (auto && state === 'run') {
+      acc += dt;
+      let guard = 0;
+      while (state === 'run' && acc >= game.speed() && guard++ < 4) { acc -= game.speed(); tick(); }
+    } else {
+      acc = 0;
+    }
+    // Частина такту, що вже минула: саме вона й робить рух плавним.
+    // Поза грою показуємо ланки там, де вони стоять насправді.
+    const p = (auto && state === 'run' && game && game.alive) ? Math.min(1, acc / game.speed()) : 1;
+    if (eatFlash > 0) eatFlash = Math.max(0, eatFlash - dt / 420);
+    draw(t, p);
+    requestAnimationFrame(frame);
+  }
+
+  /* ───────── керування ───────── */
+  function go(dir) {
+    if (state === 'over') return;
+    if (state === 'pause') setPause(false);
+    const turned = game.turn(dir);
+    if (state === 'idle') begin();
+    return turned;
+  }
+
+  const DIR_KEYS = {
+    ArrowUp: 'up', ArrowDown: 'down', ArrowLeft: 'left', ArrowRight: 'right',
+    w: 'up', s: 'down', a: 'left', d: 'right',
+    ц: 'up', і: 'down', ф: 'left', в: 'right'
+  };
+
+  $('d-up').addEventListener('click', () => go('up'));
+  $('d-down').addEventListener('click', () => go('down'));
+  $('d-left').addEventListener('click', () => go('left'));
+  $('d-right').addEventListener('click', () => go('right'));
+
+  $('t-pause').addEventListener('click', () => {
+    if (state === 'idle') begin();
+    else setPause(state === 'run');
+  });
+  $('t-new').addEventListener('click', () => { closeOver(); newGame(); });
+  $('o-again').addEventListener('click', () => { closeOver(); newGame(); });
+  $('o-close').addEventListener('click', closeOver);
+
+  addEventListener('keydown', (e) => {
+    if (e.ctrlKey || e.metaKey || e.altKey) return;
+    const dir = DIR_KEYS[e.key] || DIR_KEYS[e.key.toLowerCase()];
+    if (dir) { e.preventDefault(); go(dir); return; }
+    if (e.key === ' ' || e.key === 'Spacebar') {
+      e.preventDefault();
+      if (state === 'over') { closeOver(); newGame(); }
+      else if (state === 'idle') begin();
+      else setPause(state === 'run');
+      return;
+    }
+    if (e.key === 'Enter' && state === 'over') { e.preventDefault(); closeOver(); newGame(); }
+  });
+
+  // свайп по полю
+  let touch = null;
+  canvas.addEventListener('touchstart', (e) => {
+    const t = e.changedTouches[0];
+    touch = { x: t.clientX, y: t.clientY };
+  }, { passive: true });
+  canvas.addEventListener('touchend', (e) => {
+    if (!touch) return;
+    const t = e.changedTouches[0];
+    const dx = t.clientX - touch.x, dy = t.clientY - touch.y;
+    touch = null;
+    if (Math.abs(dx) < 18 && Math.abs(dy) < 18) {
+      if (state === 'idle') begin(); else setPause(state === 'run');
+      return;
+    }
+    go(Math.abs(dx) > Math.abs(dy) ? (dx > 0 ? 'right' : 'left') : (dy > 0 ? 'down' : 'up'));
+  }, { passive: true });
+
+  addEventListener('resize', () => { layout(); }, { passive: true });
+  document.addEventListener('visibilitychange', () => {
+    if (document.hidden) setPause(true);
+  });
+  addEventListener('pagehide', () => { if (game) { game.pause(); persist(); } });
+  // Коли таймер не рухає змійку (перевірки), пауза від втрати фокуса тільки заплутала б
+  addEventListener('blur', () => { if (auto) setPause(true); });
+
+  // Доступ для сторінки перевірок snake-ui-tests.html
+  window.__snakeTest = {
+    get game() { return game; },
+    get state() { return state; },
+    get level() { return level; },
+    get cell() { return cell; },
+    step: tick,
+    begin,
+    newGame,
+    pause: setPause,
+    autoplay(on) { auto = !!on; },
+    points: bodyPoints,
+    keys: { up: $('d-up'), down: $('d-down'), left: $('d-left'), right: $('d-right') },
+    canvas, STORE_KEY
+  };
+
+  // Початок: якщо є незакінчений забіг — продовжуємо його
+  const run = saved.runs[level] && Game.restore(saved.runs[level]);
+  if (run && run.alive) { adopt(run); note('забіг продовжується — тисни стрілку'); }
+  else newGame();
+  layout();
+  requestAnimationFrame(frame);
+})();
+</script>
+<script src="night-sound.js" defer></script>
+</body>
+</html>

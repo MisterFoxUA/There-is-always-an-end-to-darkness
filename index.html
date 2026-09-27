@@ -200,14 +200,20 @@
   }
   .choice[data-choice="yes"]::before { background: radial-gradient(closest-side, rgba(242,184,114,.34), transparent); }
   .choice[data-choice="no"]::before  { background: radial-gradient(closest-side, rgba(185,198,236,.26), transparent); }
-  .choice[data-choice="play"]::before { background: radial-gradient(closest-side, rgba(169,200,168,.26), transparent); }
+  .choice[data-choice="play"]::before,
+  .choice[data-choice="words"]::before,
+  .choice[data-choice="snake"]::before { background: radial-gradient(closest-side, rgba(169,200,168,.26), transparent); }
   .choice[data-choice="yes"]::after  { background: linear-gradient(90deg, transparent, var(--candle), transparent); }
   .choice[data-choice="no"]::after   { background: linear-gradient(90deg, transparent, var(--moon), transparent); }
-  .choice[data-choice="play"]::after { background: linear-gradient(90deg, transparent, var(--moss), transparent); }
+  .choice[data-choice="play"]::after,
+  .choice[data-choice="words"]::after,
+  .choice[data-choice="snake"]::after { background: linear-gradient(90deg, transparent, var(--moss), transparent); }
 
-  /* Судоку — не відповідь, тому окремим рядком і тихіше за два головні вибори */
+  /* Ігри — не відповідь, тому окремим рядком і тихіше за два головні вибори */
   .choices .break { flex-basis: 100%; height: 0; }
-  .choice[data-choice="play"] {
+  .choice[data-choice="play"],
+  .choice[data-choice="words"],
+  .choice[data-choice="snake"] {
     font-size: clamp(1.15rem, 3.2vw, 1.4rem);
     color: var(--bone-dim);
     margin-top: clamp(.4rem, 2vh, 1.2rem);
@@ -216,7 +222,9 @@
   .choice:hover, .choice:focus-visible, .choice.armed { transform: translateY(-2px); }
   .choice[data-choice="yes"]:hover, .choice[data-choice="yes"]:focus-visible, .choice[data-choice="yes"].armed { color: #ffe6c4; }
   .choice[data-choice="no"]:hover,  .choice[data-choice="no"]:focus-visible,  .choice[data-choice="no"].armed  { color: #e3e9ff; }
-  .choice[data-choice="play"]:hover, .choice[data-choice="play"]:focus-visible, .choice[data-choice="play"].armed { color: #dff0dd; }
+  .choice[data-choice="play"]:hover, .choice[data-choice="play"]:focus-visible, .choice[data-choice="play"].armed,
+  .choice[data-choice="words"]:hover, .choice[data-choice="words"]:focus-visible, .choice[data-choice="words"].armed,
+  .choice[data-choice="snake"]:hover, .choice[data-choice="snake"]:focus-visible, .choice[data-choice="snake"].armed { color: #dff0dd; }
   .choice:hover::before, .choice:focus-visible::before, .choice.armed::before { opacity: 1; transform: scale(1); }
   .choice:hover::after,  .choice:focus-visible::after,  .choice.armed::after  { width: 70%; }
   .choice:focus-visible { outline: 1px dashed var(--bone-faint); outline-offset: 4px; }
@@ -257,7 +265,9 @@
   #tip.below.on { transform: translate(-50%, 0) rotate(1deg); }
   #tip[data-tone="yes"] { --tip-glow: rgba(242,184,114,.4); --tip-ink: #ffdcaa; }
   #tip[data-tone="no"]  { --tip-glow: rgba(185,198,236,.35); --tip-ink: #dce4ff; }
-  #tip[data-tone="play"] { --tip-glow: rgba(169,200,168,.32); --tip-ink: #dff0dd; }
+  #tip[data-tone="play"],
+  #tip[data-tone="words"],
+  #tip[data-tone="snake"] { --tip-glow: rgba(169,200,168,.32); --tip-ink: #dff0dd; }
 
   #tip .tip-text {
     display: block;
@@ -430,6 +440,8 @@
       <button class="choice" type="button" data-choice="no" id="btn-no"></button>
       <span class="break" aria-hidden="true"></span>
       <button class="choice" type="button" data-choice="play" id="btn-play"></button>
+      <button class="choice" type="button" data-choice="words" id="btn-words"></button>
+      <button class="choice" type="button" data-choice="snake" id="btn-snake"></button>
     </div>
     <p class="note" id="note"></p>
   </section>
@@ -437,13 +449,17 @@
   <section class="screen" id="letter">
     <article class="letter" id="letter-body"></article>
     <div class="letter-end" aria-hidden="true"><span></span></div>
-    <p class="quiet-play"><a href="sudoku.html">а якщо захочеться просто порахувати — тут судоку</a></p>
+    <p class="quiet-play">а якщо захочеться просто порахувати — тут <a href="sudoku.html">судоку</a>,
+       а якщо погратися зі словами — тут <a href="crossword.html">кросворд</a>,
+       а якщо ні про що не думати — тут <a href="snake.html">змійка</a></p>
   </section>
 
   <section class="screen" id="ended">
     <p class="ended-title" id="ended-title"></p>
     <p class="ended-text" id="ended-text"></p>
-    <p class="quiet-play"><a href="sudoku.html">а якщо захочеться просто порахувати — тут судоку</a></p>
+    <p class="quiet-play">а якщо захочеться просто порахувати — тут <a href="sudoku.html">судоку</a>,
+       а якщо погратися зі словами — тут <a href="crossword.html">кросворд</a>,
+       а якщо ні про що не думати — тут <a href="snake.html">змійка</a></p>
   </section>
 </main>
 
@@ -467,11 +483,21 @@ const CONFIG = {
     label: 'Шансу немає',
     tip:   'У темряви завжди є кінець'
   },
-  // Третій варіант: не відповідь, а окрема сторінка з судоку
+  // Третій і четвертий варіанти: не відповіді, а окремі сторінки з іграми
   play: {
     label: 'Судоку?????',
     tip:   'Йопт твою мать, таааа. Таааааа. К чорту дебільні квести і так далі. Світ може почекати',
     href:  'sudoku.html'
+  },
+  words: {
+    label: 'Кросворд?????',
+    tip:   'Навіть ця біда є?!!! Ну тут по любому цей варіант',
+    href:  'crossword.html'
+  },
+  snake: {
+    label: 'Змійка?????',
+    tip:   'еееееее.... Судоку і кросворд ван лав, це тут нахолєру?',
+    href:  'snake.html'
   },
 
   note: 'Обрати можна лише один раз.',
@@ -631,10 +657,12 @@ const CONFIG = {
   });
   $('ask').style.setProperty('--after-q', (CONFIG.question.split(/\s+/).length * .17 + 1.4) + 's');
 
-  const btnYes = $('btn-yes'), btnNo = $('btn-no'), btnPlay = $('btn-play');
+  const btnYes = $('btn-yes'), btnNo = $('btn-no'), btnPlay = $('btn-play'), btnWords = $('btn-words'), btnSnake = $('btn-snake');
   btnYes.textContent = CONFIG.yes.label;
   btnNo.textContent = CONFIG.no.label;
   btnPlay.textContent = CONFIG.play.label;
+  btnWords.textContent = CONFIG.words.label;
+  btnSnake.textContent = CONFIG.snake.label;
   const note = $('note');
   note.textContent = CONFIG.note;
   $('ended-title').textContent = CONFIG.ended.title;
@@ -679,7 +707,7 @@ const CONFIG = {
     hideTip();
   }
 
-  [btnYes, btnNo, btnPlay].forEach((btn) => {
+  [btnYes, btnNo, btnPlay, btnWords, btnSnake].forEach((btn) => {
     btn.addEventListener('pointerdown', (e) => { lastPointer = e.pointerType; });
     btn.addEventListener('pointerenter', (e) => { if (e.pointerType === 'mouse') showTip(btn, false); });
     btn.addEventListener('pointerleave', (e) => { if (e.pointerType === 'mouse') hideTip(); });
@@ -697,8 +725,9 @@ const CONFIG = {
           return;
         }
       }
-      // Судоку нічого не надсилає і не витрачає єдину відповідь — просто інша сторінка
-      if (btn.dataset.choice === 'play') { location.href = CONFIG.play.href; return; }
+      // Ігри нічого не надсилають і не витрачають єдину відповідь — просто інші сторінки
+      const spec = CONFIG[btn.dataset.choice];
+      if (spec && spec.href) { location.href = spec.href; return; }
       choose(btn.dataset.choice);
     });
   });
@@ -808,5 +837,6 @@ const CONFIG = {
   Promise.race([fontsReady, new Promise(r => setTimeout(r, 2500))]).then(() => setTimeout(init, 600));
 })();
 </script>
+<script src="night-sound.js" defer></script>
 </body>
 </html>

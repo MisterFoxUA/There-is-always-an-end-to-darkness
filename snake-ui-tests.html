@@ -1,0 +1,242 @@
+<!DOCTYPE html>
+<html lang="uk">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex, nofollow">
+<title>Перевірка сторінки змійки</title>
+<style>
+  body { margin: 0; padding: 2rem 1.25rem; background: #0d0b1f; color: #efe7dc;
+         font: 15px/1.6 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
+  h1 { font-size: 1.2rem; font-weight: 500; margin: 0 0 1.2rem; }
+  #summary { margin: 0 0 1.5rem; padding: .8rem 1rem; border-radius: 8px; background: rgba(239,231,220,.06); }
+  #summary.pass { color: #bfe6b0; } #summary.fail { color: #e58a7a; }
+  .ok { color: rgba(239,231,220,.55); } .bad { color: #e58a7a; font-weight: 700; }
+  .info { color: #f2b872; margin-top: 1rem; }
+  div { white-space: pre-wrap; }
+  iframe { width: 420px; height: 760px; border: 1px solid rgba(239,231,220,.15); border-radius: 8px;
+           margin-top: 1.5rem; background: #0d0b1f; }
+</style>
+</head>
+<body>
+<h1>Перевірка сторінки змійки</h1>
+<p id="summary">виконую…</p>
+<div id="out"></div>
+<iframe id="frame" title="сторінка змійки"></iframe>
+
+<script>
+(async () => {
+  'use strict';
+  const out = document.getElementById('out');
+  let fails = 0, total = 0;
+  const line = (t, c) => { const d = document.createElement('div'); d.className = c || ''; d.textContent = t; out.appendChild(d); };
+  const ok = (cond, msg) => { total++; if (cond) line('ok   ' + msg, 'ok'); else { fails++; line('FAIL ' + msg, 'bad'); } };
+  const wait = (ms) => new Promise((r) => setTimeout(r, ms));
+  const until = async (cond, ms = 6000) => {
+    const t0 = Date.now();
+    while (Date.now() - t0 < ms) { if (cond()) return true; await wait(40); }
+    return false;
+  };
+
+  // збереження гравця не чіпаємо
+  const KEY = 'etd-snake';
+  let backup = null;
+  try { backup = localStorage.getItem(KEY); localStorage.removeItem(KEY); } catch {}
+
+  const frame = document.getElementById('frame');
+  let win, doc, api;
+
+  async function load(reload) {
+    const loaded = new Promise((r) => frame.addEventListener('load', r, { once: true }));
+    if (reload) frame.contentWindow.location.reload();
+    else frame.src = 'snake.html';
+    await loaded;
+    win = frame.contentWindow;
+    doc = frame.contentDocument;
+    return until(() => { api = win.__snakeTest; return api && api.game; });
+  }
+
+  const started = await load(false);
+  ok(started, 'сторінка завантажилась і забіг готовий');
+  if (!started) { finish(); return; }
+
+  const $ = (id) => doc.getElementById(id);
+  const click = (el) => el.dispatchEvent(new win.MouseEvent('click', { bubbles: true }));
+  const press = (key) => win.dispatchEvent(new win.KeyboardEvent('keydown', { key, bubbles: true }));
+
+  // Кроки робимо самі — щоб перевірки не залежали від таймера
+  api.autoplay(false);
+  let game = api.game;
+
+  // ───────── початковий вигляд ─────────
+  ok(doc.querySelectorAll('.level').length === 4, 'на сторінці чотири рівні');
+  ok(doc.querySelector('.level[aria-pressed="true"]').textContent === 'спокій', 'вибраний рівень — спокій');
+  ok(api.level === 'calm' && game.level === 'calm', 'гра теж на рівні «спокій»');
+  ok(api.state === 'idle', 'забіг чекає першого руху');
+  ok($('veil').classList.contains('on') && $('veil').textContent.includes('поїхали'),
+     'поверх поля видно запрошення почати');
+  ok($('score').textContent === '0' && $('len').textContent === String(game.length),
+     'лічильники показують нуль і довжину змійки');
+  ok($('best-wrap').hidden, 'найкращого рахунку ще немає');
+
+  const boardW = parseFloat($('board').style.width);
+  ok(boardW === api.cell * game.cols, 'розмір полотна збігається з полем');
+  ok(api.cell >= 10, 'клітинка не менша за 10 пікселів');
+  ok($('over').classList.contains('on') === false, 'вікно кінця забігу закрите');
+
+  // ───────── старт і повороти ─────────
+  press('ArrowDown');
+  ok(api.state === 'run', 'стрілка запускає забіг');
+  ok(game.queue.length === 1, 'поворот став у чергу');
+  const y0 = game.yOf(game.head);
+  ok(['move', 'eat', 'star'].includes(api.step()), 'крок виконується');
+  ok(game.yOf(game.head) === y0 + 1, 'після стрілки вниз змійка пішла вниз');
+
+  press('ArrowUp');
+  ok(game.queue.length === 0, 'поворот назад у себе ігнорується');
+
+  click(api.keys.right);
+  api.step();
+  ok(game.dir.x === 1 && game.dir.y === 0, 'кнопка-стрілка повертає змійку');
+
+  press('a');
+  ok(game.queue.length === 0, 'WASD назад у себе теж ігнорується');
+  press('w');
+  api.step();
+  ok(game.dir.y === -1, 'клавіша W повертає вгору');
+
+  // ───────── плавність руху ─────────
+  // Логіка крокова, а малюється рух між клітинками: перевіряємо саме це
+  {
+    api.step();
+    const at0 = api.points(0), at1 = api.points(1), mid = api.points(0.5);
+    ok(at1[0].x === (game.xOf(game.head) + 0.5) * api.cell &&
+       at1[0].y === (game.yOf(game.head) + 0.5) * api.cell,
+       'на кінець такту голова стоїть рівно в своїй клітинці');
+    ok(Math.abs(mid[0].x - (at0[0].x + at1[0].x) / 2) < 0.01 &&
+       Math.abs(mid[0].y - (at0[0].y + at1[0].y) / 2) < 0.01,
+       'посеред такту голова намальована на півдорозі між клітинками');
+    ok(at0[0].x !== at1[0].x || at0[0].y !== at1[0].y, 'за такт голова справді переїжджає');
+    ok(mid.length === game.snake.length, 'малюються всі ланки');
+    // Сусідні ланки — не далі клітинки одна від одної. На повороті вони стоять
+    // по діагоналі (0.707) — саме так тіло і зрізає кут.
+    const gaps = mid.slice(1).map((pt, i) =>
+      Math.round(Math.hypot(pt.x - mid[i].x, pt.y - mid[i].y) / api.cell * 100) / 100);
+    ok(gaps.every((g) => (g >= 0.7 && g <= 1.01) || g > game.cols - 2),
+       'ланки не розтягуються і не злипаються: ' + gaps.join(','));
+  }
+
+  // ───────── їжа ─────────
+  // рахуємо від того, що вже є: випадкова їжа могла трапитись на шляху й раніше
+  const scoreBefore = game.score;
+  const grownBefore = game.length + game.grow;
+  game.food = game.snake[0] + game.dir.x + game.dir.y * game.cols;  // просто перед носом
+  ok(api.step() === 'eat', 'змійка доїхала до їжі');
+  ok($('score').textContent === String(scoreBefore + 10), 'рахунок на екрані виріс на 10');
+  ok(game.length + game.grow === grownBefore + 2, 'їжа додала дві ланки');
+  api.step();
+  ok($('len').textContent === String(game.length), 'довжина на екрані збігається зі змійкою');
+
+  // ───────── пауза ─────────
+  click($('t-pause'));
+  ok(api.state === 'pause' && $('t-pause').getAttribute('aria-pressed') === 'true', 'кнопка ставить паузу');
+  ok($('veil').textContent === 'пауза' && doc.body.classList.contains('paused'), 'пауза видна на полі');
+  ok(api.step() === 'over', 'на паузі кроки не робляться');
+  press(' ');
+  ok(api.state === 'run' && !doc.body.classList.contains('paused'), 'пробіл знімає паузу');
+  press(' ');
+  ok(api.state === 'pause', 'пробіл ставить паузу назад');
+  press('ArrowLeft');
+  ok(api.state === 'run', 'стрілка знімає паузу і веде далі');
+
+  // ───────── збереження і продовження ─────────
+  api.step(); api.step();
+  click($('t-pause'));                    // пауза записує забіг одразу
+  const snapshot = game.snake.join(',');
+  const score = game.score;
+  let stored = null;
+  try { stored = JSON.parse(localStorage.getItem(KEY)); } catch {}
+  ok(stored && stored.runs && stored.runs.calm, 'забіг зберігається в localStorage');
+  ok(stored.runs.calm.snake.join(',') === snapshot, 'у збереженні та сама змійка');
+
+  ok(await load(true), 'сторінка відкривається повторно');
+  api.autoplay(false);
+  game = api.game;
+  ok(game.snake.join(',') === snapshot && game.score === score,
+     'після перезавантаження забіг продовжується з того ж місця');
+  ok(api.state === 'idle' && $('note').textContent.includes('продовжується'),
+     'продовження чекає першого руху і каже про це');
+
+  // ───────── кінець забігу об стіну ─────────
+  click([...doc.querySelectorAll('.level')].find((b) => b.textContent === 'шторм'));
+  ok(api.level === 'storm', 'рівень «шторм» вибрано');
+  api.autoplay(false);
+  game = api.game;
+  ok(game.wrap === false && game.level === 'storm', 'на штормі край поля — стіна');
+  ok(parseFloat($('board').style.width) === api.cell * game.cols, 'полотно перерахувалось під новий розмір поля');
+
+  press('ArrowRight');
+  ok(api.state === 'run', 'новий забіг почався');
+  game.food = null;                       // прибираємо їжу, щоб рахунок не змінився дорогою
+  game.score = 120;                       // щоб перевірити запис рекорду
+  let ev = 'move', guard = 0;
+  while (game.alive && guard++ < 40) ev = api.step();
+  ok(ev === 'wall' && !game.alive, 'змійка доїхала до стіни й забіг завершився');
+  ok(api.state === 'over', 'сторінка перейшла в стан «кінець»');
+  const shown = await until(() => $('over').classList.contains('on'));
+  ok(shown, 'зʼявляється вікно кінця забігу');
+  ok($('over-sub').textContent.includes('очок') && $('over-sub').textContent.includes('стіну'),
+     'у вікні видно рахунок і причину: ' + $('over-sub').textContent);
+  ok($('t-pause').disabled, 'після кінця пауза недоступна');
+  ok($('best').textContent === '120' && !$('best-wrap').hidden, 'найкращий рахунок показано');
+  try { stored = JSON.parse(localStorage.getItem(KEY)); } catch {}
+  ok(stored.best.storm === 120, 'рекорд збережено');
+  ok(!stored.runs.storm, 'завершений забіг не лишається у збереженні');
+
+  // ───────── ще раз ─────────
+  click($('o-again'));
+  api.autoplay(false);
+  game = api.game;
+  ok(!$('over').classList.contains('on'), 'вікно закрилось');
+  ok(api.state === 'idle' && game.alive && game.score === 0, 'новий забіг чистий');
+  ok($('score').textContent === '0' && game.length === 3, 'лічильники скинулись');
+  ok($('best').textContent === '120', 'рекорд лишився на екрані');
+
+  // ───────── перешкоди на «безодні» ─────────
+  click([...doc.querySelectorAll('.level')].find((b) => b.textContent === 'безодня'));
+  api.autoplay(false);
+  game = api.game;
+  ok(api.level === 'abyss' && game.walls.size > 0, 'на «безодні» на полі є перешкоди');
+  ok(game.snake.every((i) => !game.isWall(i)), 'змійка не стоїть у перешкоді');
+
+  // кнопка «нова» дає інше поле
+  const walls = [...game.walls].join(',');
+  click($('t-new'));
+  api.autoplay(false);
+  ok(api.game !== game, 'кнопка «нова» дає новий забіг');
+  ok(api.game.level === 'abyss' && api.state === 'idle', 'новий забіг на тому ж рівні й чекає старту');
+  line('поля «безодні»: було [' + walls.slice(0, 40) + '…], стало [' + [...api.game.walls].join(',').slice(0, 40) + '…]', 'info');
+
+  // ───────── таймер сам рухає змійку ─────────
+  api.autoplay(true);
+  press('ArrowUp');
+  const head0 = api.game.head;
+  const moved = await until(() => api.game.head !== head0, 2000);
+  ok(moved, 'з увімкненим таймером змійка повзе сама');
+
+  finish();
+
+  function finish() {
+    try {
+      if (backup === null) localStorage.removeItem(KEY);
+      else localStorage.setItem(KEY, backup);
+    } catch {}
+    const s = document.getElementById('summary');
+    s.className = fails ? 'fail' : 'pass';
+    s.textContent = fails ? `${fails} провалів із ${total} перевірок` : `усі ${total} перевірок пройдено`;
+    document.title = (fails ? 'FAIL ' : 'PASS ') + `${total - fails}/${total}`;
+  }
+})();
+</script>
+</body>
+</html>

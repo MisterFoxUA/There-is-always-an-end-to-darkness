@@ -1,0 +1,347 @@
+<!DOCTYPE html>
+<html lang="uk">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex, nofollow">
+<title>Перевірка сторінки кросворда</title>
+<style>
+  body { margin: 0; padding: 2rem 1.25rem; background: #0d0b1f; color: #efe7dc;
+         font: 15px/1.6 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
+  h1 { font-size: 1.2rem; font-weight: 500; margin: 0 0 1.2rem; }
+  #summary { margin: 0 0 1.5rem; padding: .8rem 1rem; border-radius: 8px; background: rgba(239,231,220,.06); }
+  #summary.pass { color: #bfe6b0; } #summary.fail { color: #e58a7a; }
+  .ok { color: rgba(239,231,220,.55); } .bad { color: #e58a7a; font-weight: 700; }
+  .info { color: #f2b872; margin-top: 1rem; }
+  div { white-space: pre-wrap; }
+  iframe { width: 900px; max-width: 100%; height: 900px; border: 1px solid rgba(239,231,220,.15);
+           border-radius: 8px; margin-top: 1.5rem; background: #0d0b1f; }
+</style>
+</head>
+<body>
+<h1>Перевірка сторінки кросворда</h1>
+<p id="summary">виконую…</p>
+<div id="out"></div>
+<iframe id="frame" title="сторінка кросворда"></iframe>
+
+<script>
+(async () => {
+  'use strict';
+  const out = document.getElementById('out');
+  let fails = 0, total = 0;
+  const line = (t, c) => { const d = document.createElement('div'); d.className = c || ''; d.textContent = t; out.appendChild(d); };
+  const ok = (cond, msg) => { total++; if (cond) line('ok   ' + msg, 'ok'); else { fails++; line('FAIL ' + msg, 'bad'); } };
+  const wait = (ms) => new Promise((r) => setTimeout(r, ms));
+  const until = async (cond, ms = 8000) => {
+    const t0 = Date.now();
+    while (Date.now() - t0 < ms) { if (cond()) return true; await wait(40); }
+    return false;
+  };
+
+  // збереження гравця не чіпаємо
+  const KEY = 'etd-crossword';
+  let backup = null;
+  try { backup = localStorage.getItem(KEY); localStorage.removeItem(KEY); } catch {}
+
+  const frame = document.getElementById('frame');
+  const loaded = new Promise((r) => frame.addEventListener('load', r, { once: true }));
+  frame.src = 'crossword.html';
+  await loaded;
+
+  const win = frame.contentWindow;
+  let doc = frame.contentDocument;
+  let api = null;
+  const ready = await until(() => {
+    api = win.__crosswordTest;
+    return api && api.game && api.cells.length && !doc.getElementById('board').classList.contains('loading');
+  });
+  ok(ready, 'сторінка завантажилась і перший кросворд складено');
+  if (!ready) { finish(); return; }
+
+  const $ = (id) => frame.contentDocument.getElementById(id);
+  const click = (el) => el.dispatchEvent(new win.MouseEvent('click', { bubbles: true }));
+  const press = (key, opts) => frame.contentWindow.dispatchEvent(
+    new win.KeyboardEvent('keydown', Object.assign({ key, bubbles: true }, opts)));
+
+  let game = api.game;
+  const E = win.CrosswordEngine;
+  const cellOf = (i) => api.cells[i];
+  const keyOf = (ch) => api.keys[[...E.ALPHABET].indexOf(ch)];
+  const openCells = () => game.solution
+    .map((ch, i) => (ch && !game.isGiven(i) && !game.letters[i] ? i : -1))
+    .filter((i) => i >= 0);
+
+  line(`сітка ${game.rows}×${game.cols}, слів ${game.entries.length}`, 'info');
+
+  /* ───────── розмітка ───────── */
+  ok(api.cells.length === game.rows * game.cols, 'на полі стільки клітинок, скільки в сітці');
+  ok(doc.querySelectorAll('.cell.block').length === game.solution.filter((ch) => !ch).length,
+     'порожні клітинки сітки затемнені й недоступні');
+  ok(doc.querySelectorAll('.key').length === E.ALPHABET.length, 'на клавіатурі всі літери алфавіту');
+  ok(doc.querySelectorAll('#across .clue').length === game.entries.filter((e) => e.dir === 'a').length &&
+     doc.querySelectorAll('#down .clue').length === game.entries.filter((e) => e.dir === 'd').length,
+     'означення розкладені по списках «лежачі» й «стоячі»');
+  ok([...doc.querySelectorAll('.clue .text')].every((el) => el.textContent.trim().length > 3),
+     'у кожного означення в списку є текст');
+  ok(doc.querySelectorAll('.cell .n').length === new Set(game.entries.map((e) => e.cells[0])).size,
+     'номери стоять у перших клітинках слів');
+  ok($('t-check').getAttribute('aria-pressed') === 'true', 'підсвітка помилок увімкнена від початку');
+  ok(game.given.size === doc.querySelectorAll('.cell.given').length,
+     'відкриті від початку літери видно на полі');
+
+  /* ───────── вибір слова ───────── */
+  const first = game.entries[0];
+  click(cellOf(first.cells[0]));
+  ok(api.selected === first.cells[0], 'клік вибирає клітинку');
+  ok(cellOf(first.cells[0]).classList.contains('sel'), 'вибрана клітинка підсвічена');
+  let entry = game.entryFor(api.selected, api.dir);
+  ok(entry != null, 'у вибраній клітинці є слово');
+  ok(entry.cells.slice(1).every((i) => cellOf(i).classList.contains('word')),
+     'усе слово підсвічене разом із клітинкою');
+  ok($('current').textContent.includes(entry.clue), 'означення поточного слова видно над полем');
+
+  const bothWays = game.entries[0].cells.find((i) => game.entryOf.a[i] && game.entryOf.d[i]);
+  if (bothWays != null) {
+    click(cellOf(bothWays));
+    const was = api.dir;
+    click(cellOf(bothWays));  // повторний клік по вибраній клітинці
+    ok(api.dir !== was, 'клік по вибраній клітинці повертає слово');
+    press(' ');
+    ok(api.dir === was, 'пробіл теж повертає слово');
+  } else {
+    ok(true, 'у цьому слові немає перетину — повертати нічого');
+    ok(true, 'пробіл теж повертає слово (немає де перевірити)');
+  }
+
+  const downClue = doc.querySelector('#down .clue');
+  if (downClue) {
+    click(downClue);
+    const picked = game.entryFor(api.selected, api.dir);
+    ok(api.dir === 'd' && picked && String(picked.num) === downClue.dataset.num,
+       'клік по означенню в списку переводить до його слова');
+    ok(downClue.getAttribute('aria-current') === 'true', 'поточне означення позначене в списку');
+  } else {
+    ok(true, 'стоячих слів немає — перевіряти нічого');
+    ok(true, 'поточне означення позначене в списку (немає де перевірити)');
+  }
+
+  /* ───────── введення літер ───────── */
+  const target = openCells()[0];
+  click(cellOf(target));
+  entry = game.entryFor(api.selected, api.dir);
+  const right = game.solution[target];
+  const wrong = right === 'А' ? 'Б' : 'А';
+
+  click(keyOf(wrong));
+  ok(game.letters[target] === wrong, 'клік по літері вписує її в клітинку');
+  ok(cellOf(target).classList.contains('bad'), 'помилкова літера підсвічена рожевим');
+  ok(api.selected !== target, 'після літери курсор іде далі по слову');
+
+  click(cellOf(target));
+  press(right);
+  ok(game.letters[target] === right, 'літера з клавіатури вписується');
+  ok(!cellOf(target).classList.contains('bad'), 'правильна літера не підсвічена як помилка');
+
+  click(cellOf(target));
+  click($('t-erase'));
+  ok(game.letters[target] === '', 'кнопка «стерти» звільняє клітинку');
+
+  click(cellOf(target));
+  press(right);
+  click(cellOf(target));
+  press('Backspace');
+  ok(game.letters[target] === '', 'Backspace теж стирає');
+
+  click(cellOf(target));
+  press(right);
+  click($('t-undo'));
+  ok(game.letters[target] === '', 'кнопка «назад» скасовує хід');
+
+  /* ───────── підсвітка помилок і підказка ───────── */
+  click(cellOf(target));
+  click(keyOf(wrong));
+  click($('t-check'));
+  ok($('t-check').getAttribute('aria-pressed') === 'false' && !cellOf(target).classList.contains('bad'),
+     'підсвітку помилок можна вимкнути');
+  click($('t-check'));
+  ok(cellOf(target).classList.contains('bad'), 'підсвітку помилок можна ввімкнути назад');
+
+  click(cellOf(target));
+  click($('t-hint'));
+  ok(game.letters[target] === right, 'підказка виправляє помилкову літеру');
+  ok(cellOf(target).classList.contains('hint'), 'підказана літера позначена окремим кольором');
+  ok(game.hints >= 1, 'підказки рахуються');
+
+  /* ───────── розгадане слово ───────── */
+  const mark = game.entries.find((e) => !game.entrySolved(e));
+  if (mark) {
+    for (const i of mark.cells) {
+      if (game.letters[i] === game.solution[i]) continue;
+      click(cellOf(i));
+      press(game.solution[i]);
+    }
+    const btn = api.clueButtons.get(mark.dir + mark.num);
+    ok(game.entrySolved(mark), 'слово можна вписати повністю');
+    ok(btn && btn.classList.contains('done'), 'розгадане слово перекреслене в списку');
+    ok($('progress').textContent.startsWith(String(game.solvedCount())), 'лічильник слів оновлюється');
+  } else {
+    ok(true, 'усі слова вже розгадані'); ok(true, ''); ok(true, '');
+  }
+
+  /* ───────── стрілки ───────── */
+  const walk = game.entries.find((e) => e.dir === 'a' && e.len >= 2);
+  if (walk) {
+    click(cellOf(walk.cells[0]));
+    press('ArrowRight');
+    ok(api.selected === walk.cells[1], 'стрілка вправо переходить до наступної клітинки слова');
+    press('ArrowLeft');
+    ok(api.selected === walk.cells[0], 'стрілка влiво повертає назад');
+  } else {
+    ok(true, 'лежачих слів немає'); ok(true, '');
+  }
+
+  /* ───────── вузький екран ───────── */
+  const wide = frame.getBoundingClientRect().width;
+  ok($('board').getBoundingClientRect().width <= wide,
+     'поле вміщується в сторінку на широкому екрані');
+  frame.style.width = '380px';
+  frame.contentWindow.dispatchEvent(new win.Event('resize'));
+  await wait(120);
+  const narrow = $('board').getBoundingClientRect().width;
+  ok(narrow <= 380, `поле стискається під телефон (${Math.round(narrow)}px у 380px)`);
+  ok(doc.documentElement.scrollWidth <= 380 + 2, 'сторінка не їде вбік на телефоні');
+
+  // найбільша сітка на найвужчому екрані: хай прокручується поле, а не вся сторінка
+  frame.style.width = '320px';
+  const expert = [...doc.querySelectorAll('.diff')].find((b) => b.dataset.k === 'expert');
+  click(expert);
+  const bigReady = await until(() => api.difficulty === 'expert' && !$('board').classList.contains('loading'));
+  ok(bigReady, 'найскладніший рівень складається');
+  await wait(150);
+  ok(doc.documentElement.scrollWidth <= 322,
+     `велика сітка не розсуває сторінку (${doc.documentElement.scrollWidth}px у 320px)`);
+  ok(doc.querySelector('.board-wrap').scrollWidth >= $('board').getBoundingClientRect().width - 1,
+     'саме поле лишається цілим — його можна прокрутити');
+
+  frame.style.width = '';
+  frame.contentWindow.dispatchEvent(new win.Event('resize'));
+  await wait(120);
+
+  /* ───────── складність ───────── */
+  const hard = [...doc.querySelectorAll('.diff')].find((b) => b.dataset.k === 'hard');
+  click(hard);
+  const switched = await until(() => api.difficulty === 'hard' && api.game !== game &&
+    !$('board').classList.contains('loading'));
+  ok(switched, 'перемикання складності складає новий кросворд');
+  game = api.game;
+  ok(game.difficulty === 'hard' && game.entries.length >= 10, 'на складному рівні слів більше');
+  ok(api.cells.length === game.rows * game.cols, 'поле перебудоване під нову сітку');
+  ok(doc.querySelectorAll('#across .clue, #down .clue').length === game.entries.length,
+     'списки означень перебудовані під нову сітку');
+
+  const easy = [...doc.querySelectorAll('.diff')].find((b) => b.dataset.k === 'easy');
+  click(easy);
+  const backEasy = await until(() => api.difficulty === 'easy' && !$('board').classList.contains('loading'));
+  ok(backEasy, 'повернення до легкого рівня працює');
+  game = api.game;
+
+  /* ───────── перемога ───────── */
+  for (let i = 0; i < game.size; i++) {
+    if (game.isBlock(i) || game.isGiven(i) || game.letters[i] === game.solution[i]) continue;
+    click(cellOf(i));
+    press(game.solution[i]);
+  }
+  ok(game.done, 'повністю правильна сітка -> кросворд розгаданий');
+  const shown = await until(() => $('win').classList.contains('shown'));
+  ok(shown, 'зʼявляється вітання з перемогою');
+  ok(/(слово|слова|слів)/.test($('win-sub').textContent) && $('win-sub').textContent.includes('легко'),
+     'у вітанні видно складність, кількість слів і час');
+  ok(doc.body.classList.contains('won'), 'світло на горизонті розгорається');
+
+  const beaten = game.solution.join('');
+  click($('w-next'));
+  const nextReady = await until(() => api.game !== game && !$('board').classList.contains('loading'));
+  ok(nextReady, 'кнопка «наступний» дає новий кросворд');
+  game = api.game;
+  ok(!game.done && game.solution.join('') !== beaten, 'новий кросворд не розгаданий і відрізняється');
+  ok(game.filled() === game.given.size, 'новий кросворд починається лише з відкритих літер');
+
+  /* ───────── збереження між відкриваннями сторінки ───────── */
+  const marker = openCells()[0];
+  click(cellOf(marker));
+  press(game.solution[marker]);
+  let stored = null;
+  try { stored = JSON.parse(localStorage.getItem(KEY)); } catch {}
+  ok(stored && stored.games && stored.games[game.difficulty], 'партія зберігається в localStorage');
+
+  const savedLetter = game.solution[marker];
+  const reloaded = new Promise((r) => frame.addEventListener('load', r, { once: true }));
+  frame.contentWindow.location.reload();
+  await reloaded;
+  const back = await until(() => {
+    api = frame.contentWindow.__crosswordTest;
+    doc = frame.contentDocument;
+    return api && api.game && api.cells.length && !doc.getElementById('board').classList.contains('loading');
+  });
+  ok(back, 'сторінка відкривається повторно');
+  ok(back && api.game.letters[marker] === savedLetter,
+     'після перезавантаження партія продовжується з того ж місця');
+  ok(back && api.game.entries.every((e) => e.clue),
+     'відновлена партія не втратила означень');
+
+  /* ───────── партія, старіша за словник ───────── */
+  // Кладемо в памʼять сітку зі словом, якого у словнику немає: означення до нього
+  // взятися нізвідки, тож сторінка мусить скласти новий кросворд замість неї.
+  // Спершу відводимо сторінку вбік: інакше, йдучи, вона збереже свою партію
+  // поверх нашої підкладки.
+  const blanked = new Promise((r) => frame.addEventListener('load', r, { once: true }));
+  frame.src = 'about:blank';
+  await blanked;
+
+  try {
+    localStorage.setItem(KEY, JSON.stringify({
+      difficulty: 'easy',
+      check: true,
+      stats: {},
+      games: {
+        easy: {
+          v: 1, difficulty: 'easy', rows: 1, cols: 4,
+          solution: 'ЩЩЩЩ', letters: '    ', given: [], hinted: [], hints: 0, elapsed: 0, done: false
+        }
+      }
+    }));
+  } catch {}
+
+  const afterStale = new Promise((r) => frame.addEventListener('load', r, { once: true }));
+  frame.src = 'crossword.html';
+  await afterStale;
+  const fresh = await until(() => {
+    api = frame.contentWindow.__crosswordTest;
+    doc = frame.contentDocument;
+    return api && api.game && api.cells.length && !doc.getElementById('board').classList.contains('loading');
+  });
+  ok(fresh, 'сторінка відкривається й зі застарілим збереженням');
+  ok(fresh && api.game.entries.length > 1 && api.game.cols > 4,
+     'замість застарілої партії складено новий кросворд');
+  ok(fresh && api.game.entries.every((e) => e.clue), 'у новій партії кожне слово має означення');
+  ok(fresh && [...doc.querySelectorAll('.clue .text')].every((el) => /\S.*\(\d+\)/.test(el.textContent)),
+     'у списках немає означень із самим лише числом літер');
+  ok(fresh && $('note').textContent.includes('словник'),
+     `сторінка пояснює, чому партія змінилася (сказала: «${fresh ? $('note').textContent : ''}»)`);
+
+  finish();
+
+  function finish() {
+    try {
+      if (backup === null) localStorage.removeItem(KEY);
+      else localStorage.setItem(KEY, backup);
+    } catch {}
+    const s = document.getElementById('summary');
+    s.className = fails ? 'fail' : 'pass';
+    s.textContent = fails ? `${fails} провалів із ${total} перевірок` : `усі ${total} перевірок пройдено`;
+    document.title = (fails ? 'FAIL ' : 'PASS ') + `${total - fails}/${total}`;
+  }
+})();
+</script>
+</body>
+</html>

@@ -10,7 +10,7 @@
 <meta name="referrer" content="no-referrer">
 <meta name="theme-color" content="#0d0b1f">
 
-<title>Судоку</title>
+<title>Кросворд</title>
 <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🕯️</text></svg>">
 
 <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -26,12 +26,14 @@
     --candle: #f2b872;
     --rose: #e58a7a;
     --moon: #b9c6ec;
+    --moss: #a9c8a8;
 
     --serif: 'Cormorant Garamond', 'Cormorant', Georgia, 'Times New Roman', serif;
     --hand: 'Caveat', 'Segoe Print', 'Bradley Hand', cursive;
 
-    --cell: clamp(30px, min(9.8vw, 7.6vh), 52px);
-    --line: rgba(239, 231, 220, .14);
+    /* розмір клітинки рахує сценарій: він залежить від ширини сітки, а вона в кожної задачі своя */
+    --cell: 32px;
+    --line: rgba(239, 231, 220, .16);
     --line-bold: rgba(239, 231, 220, .5);
 
     box-sizing: border-box;
@@ -69,7 +71,7 @@
 
   main {
     position: relative; z-index: 3;
-    max-width: 34rem; margin: 0 auto;
+    max-width: 58rem; margin: 0 auto;
     display: flex; flex-direction: column; align-items: center;
     gap: clamp(.9rem, 2.4vh, 1.4rem);
   }
@@ -101,9 +103,7 @@
 
   /* ───────── складність і лічильники ───────── */
 
-  .bar {
-    width: 100%; display: flex; flex-direction: column; align-items: center; gap: .55rem;
-  }
+  .bar { width: 100%; display: flex; flex-direction: column; align-items: center; gap: .55rem; }
   .diffs { display: flex; flex-wrap: wrap; justify-content: center; gap: .3rem; }
   .diff {
     appearance: none; background: none; cursor: pointer;
@@ -119,6 +119,7 @@
     background: rgba(242,184,114,.1);
   }
   .meta {
+    margin: 0;
     font-size: .95rem; color: var(--bone-faint); font-style: italic;
     display: flex; gap: .6rem; flex-wrap: wrap; justify-content: center;
   }
@@ -128,13 +129,27 @@
     font-feature-settings: 'lnum' 1, 'tnum' 1;
   }
 
-  /* ───────── дошка ───────── */
+  /* ───────── поле й означення ───────── */
 
-  .board-wrap { position: relative; }
+  .play {
+    width: 100%; display: flex; flex-wrap: wrap; gap: clamp(1rem, 3vw, 2rem);
+    justify-content: center; align-items: flex-start;
+  }
+  .left-col { display: flex; flex-direction: column; align-items: center; gap: .8rem; max-width: 100%; }
+
+  /* На вузькому екрані велика сітка радше прокрутиться сама, ніж потягне за собою сторінку */
+  .board-wrap { max-width: 100%; overflow-x: auto; padding-bottom: 2px; }
+
+  .current {
+    margin: 0; min-height: 2.6em; max-width: 26rem; text-align: center;
+    font-size: 1.05rem; line-height: 1.35; color: var(--bone);
+  }
+  .current .who {
+    display: block; font-style: italic; font-size: .9rem; color: var(--bone-faint);
+  }
+
   #board {
     display: grid;
-    grid-template-columns: repeat(9, var(--cell));
-    grid-template-rows: repeat(9, var(--cell));
     border: 1px solid var(--line-bold);
     border-radius: 4px;
     background: rgba(24, 20, 48, .5);
@@ -148,78 +163,90 @@
   #board.loading { opacity: .25; filter: blur(3px); pointer-events: none; }
 
   .cell {
-    appearance: none; background: none; padding: 0; cursor: pointer;
+    appearance: none; padding: 0; cursor: pointer;
+    background: rgba(239, 231, 220, .055);  /* клітинка для літери — світліша за порожнє місце */
     position: relative;
+    width: var(--cell); height: var(--cell);
     border: 0;
     border-right: 1px solid var(--line);
     border-bottom: 1px solid var(--line);
     color: var(--bone);
     font-family: var(--serif);
-    font-size: calc(var(--cell) * .58);
-    /* цифри однакової висоти й ширини — інакше Cormorant малює їх «старостильними» */
-    font-variant-numeric: lining-nums tabular-nums;
-    font-feature-settings: 'lnum' 1, 'tnum' 1;
+    font-size: calc(var(--cell) * .56);
     line-height: 1;
     display: grid; place-items: center;
     transition: background .18s ease, color .18s ease;
   }
-  .cell.r3 { border-right: 2px solid var(--line-bold); }
-  .cell.b3 { border-bottom: 2px solid var(--line-bold); }
-  .cell:nth-child(9n) { border-right: 0; }
-  .cell:nth-last-child(-n+9) { border-bottom: 0; }
-
-  .cell .v { grid-area: 1 / 1; }
-  .cell .ns {
-    grid-area: 1 / 1; display: none;
-    width: 100%; height: 100%; padding: 6%;
-    grid-template-columns: repeat(3, 1fr); grid-template-rows: repeat(3, 1fr);
+  .cell.block {
+    background: rgba(6, 5, 16, .5);
+    border-right-color: transparent; border-bottom-color: transparent;
+    cursor: default;
   }
-  .cell.notes .ns { display: grid; }
-  .cell .ns i {
-    display: grid; place-items: center;
-    font-style: normal; font-size: calc(var(--cell) * .27);
-    color: rgba(239, 231, 220, .45);
+  .cell.word  { background: rgba(239, 231, 220, .13); }
+  .cell .n {
+    position: absolute; left: 7%; top: 2%;
+    font-size: calc(var(--cell) * .28); line-height: 1;
+    font-style: italic; color: var(--bone-faint);
+    font-variant-numeric: lining-nums tabular-nums;
+    font-feature-settings: 'lnum' 1, 'tnum' 1;
   }
-
   .cell.given { color: var(--bone); }
   .cell.mine  { color: var(--candle); }
   .cell.hint  { color: var(--moon); }
-  .cell.peer  { background: rgba(239, 231, 220, .05); }
-  .cell.twin  { background: rgba(185, 198, 236, .14); }
   .cell.bad   { color: var(--rose); background: rgba(229, 138, 122, .15); }
-  .cell.sel   { background: rgba(242, 184, 114, .2); box-shadow: inset 0 0 0 1px rgba(242,184,114,.55); }
+  .cell.sel   { background: rgba(242, 184, 114, .22); box-shadow: inset 0 0 0 1px rgba(242,184,114,.55); }
   .cell.flash { animation: flash .6s ease; }
   @keyframes flash { 0% { background: rgba(185,198,236,.45); } 100% { background: transparent; } }
   .cell:focus-visible { outline: 1px dashed var(--bone-faint); outline-offset: -3px; }
 
-  /* ───────── цифри й кнопки ───────── */
+  /* ───────── списки означень ───────── */
+
+  .clues {
+    display: flex; gap: clamp(1rem, 3vw, 2rem);
+    flex: 1 1 18rem; min-width: 15rem;
+    align-items: flex-start;
+  }
+  .clue-col { flex: 1 1 0; min-width: 0; }
+  .clue-col h2 {
+    margin: 0 0 .45rem; font-weight: 400; font-style: italic;
+    font-size: 1.05rem; color: var(--candle);
+    border-bottom: 1px solid rgba(239, 231, 220, .12); padding-bottom: .3rem;
+  }
+  .clue-col ol { margin: 0; padding: 0; list-style: none; }
+  .clue {
+    display: flex; gap: .45rem; width: 100%;
+    appearance: none; background: none; border: 0; cursor: pointer;
+    text-align: left; padding: .28em .3em; border-radius: 4px;
+    color: var(--bone-dim); font-family: var(--serif);
+    font-size: 1rem; line-height: 1.3;
+    transition: color .25s ease, background .25s ease;
+  }
+  .clue:hover, .clue:focus-visible { color: var(--bone); background: rgba(239, 231, 220, .05); }
+  .clue .num {
+    flex: 0 0 auto; color: var(--bone-faint); font-style: italic;
+    font-variant-numeric: lining-nums tabular-nums;
+    font-feature-settings: 'lnum' 1, 'tnum' 1;
+  }
+  .clue[aria-current="true"] { color: #ffe6c4; background: rgba(242, 184, 114, .12); }
+  .clue.done { color: var(--bone-faint); text-decoration: line-through; text-decoration-color: rgba(169,200,168,.7); }
+
+  /* ───────── літери й кнопки ───────── */
 
   #pad {
-    width: 100%; display: grid; gap: .35rem;
-    grid-template-columns: repeat(9, 1fr);
-  }
-  @media (max-width: 560px) {
-    #pad { grid-template-columns: repeat(5, 1fr); }
+    width: 100%; max-width: 30rem; display: grid; gap: .28rem;
+    grid-template-columns: repeat(11, 1fr);
   }
   .key {
     appearance: none; cursor: pointer;
     background: rgba(239, 231, 220, .05);
     border: 1px solid rgba(239, 231, 220, .12);
-    border-radius: 8px;
+    border-radius: 6px;
     color: var(--bone);
-    font-family: var(--serif); font-size: clamp(1.25rem, 5vw, 1.6rem);
-    font-variant-numeric: lining-nums tabular-nums;
-    font-feature-settings: 'lnum' 1, 'tnum' 1;
-    padding: .4em 0 .5em;
-    position: relative;
-    transition: background .25s ease, border-color .25s ease, color .25s ease, opacity .25s ease;
+    font-family: var(--serif); font-size: clamp(.95rem, 3.6vw, 1.2rem);
+    padding: .35em 0 .4em;
+    transition: background .25s ease, border-color .25s ease, color .25s ease;
   }
   .key:hover, .key:focus-visible { background: rgba(242, 184, 114, .12); border-color: rgba(242,184,114,.35); }
-  .key .left {
-    position: absolute; right: .28em; top: .1em;
-    font-size: .48em; color: var(--bone-faint); font-style: italic;
-  }
-  .key.spent { opacity: .32; }
 
   .tools { width: 100%; display: flex; flex-wrap: wrap; gap: .4rem; justify-content: center; }
   .tool {
@@ -239,13 +266,12 @@
   .hint-note {
     margin: 0; min-height: 1.4em; text-align: center;
     font-size: .95rem; font-style: italic; color: var(--bone-faint);
-    transition: color .3s ease;
   }
 
   /* ───────── правила ───────── */
 
   details.rules {
-    width: 100%; max-width: 30rem;
+    width: 100%; max-width: 32rem;
     border-top: 1px solid rgba(239, 231, 220, .1);
     padding-top: .9rem;
   }
@@ -255,9 +281,7 @@
   }
   details.rules summary::-webkit-details-marker { display: none; }
   details.rules summary::before { content: "· "; color: var(--candle); }
-  details.rules div {
-    margin-top: .7rem; font-size: 1rem; line-height: 1.6; color: var(--bone-dim);
-  }
+  details.rules div { margin-top: .7rem; font-size: 1rem; line-height: 1.6; color: var(--bone-dim); }
   details.rules p { margin: 0 0 .6em; }
   details.rules b { color: var(--bone); font-weight: 500; }
 
@@ -299,33 +323,47 @@
 <main>
   <header>
     <a class="back" href="index.html">← назад</a>
-    <a class="other" href="crossword.html">кросворд →</a>
-    <h1>Судоку</h1>
-    <p class="tagline">Ось тут можна провести цілу вічність, жаль що в дні тільки 24 години!!!!!</p>
+    <a class="other" href="sudoku.html">судоку →</a>
+    <h1>Кросворд</h1>
+    <p class="tagline">Слова тримаються одне за одного — як і все інше</p>
   </header>
 
   <section class="bar">
     <div class="diffs" id="diffs" role="group" aria-label="Складність"></div>
     <p class="meta">
       <span>час <b id="timer">0:00</b></span>
-      <span>розвʼязано <b id="solved">0</b></span>
+      <span>слів <b id="progress">0 / 0</b></span>
+      <span>розгадано <b id="solved">0</b></span>
       <span id="best-wrap" hidden>найшвидше <b id="best">—</b></span>
     </p>
   </section>
 
-  <div class="board-wrap">
-    <div id="board" role="grid" aria-label="Поле судоку"></div>
+  <div class="play">
+    <div class="left-col">
+      <p class="current" id="current" aria-live="polite"></p>
+      <div class="board-wrap"><div id="board" role="grid" aria-label="Поле кросворда"></div></div>
+      <div id="pad"></div>
+    </div>
+
+    <div class="clues">
+      <div class="clue-col">
+        <h2>Лежачі</h2>
+        <ol id="across"></ol>
+      </div>
+      <div class="clue-col">
+        <h2>Стоячі</h2>
+        <ol id="down"></ol>
+      </div>
+    </div>
   </div>
 
-  <div id="pad"></div>
-
   <div class="tools">
-    <button class="tool" type="button" id="t-notes" aria-pressed="false">олівець</button>
+    <button class="tool" type="button" id="t-flip">повернути слово</button>
     <button class="tool" type="button" id="t-erase">стерти</button>
     <button class="tool" type="button" id="t-undo">назад</button>
     <button class="tool" type="button" id="t-hint">підказка</button>
     <button class="tool" type="button" id="t-check" aria-pressed="true">показувати помилки</button>
-    <button class="tool" type="button" id="t-new">нова</button>
+    <button class="tool" type="button" id="t-new">новий</button>
   </div>
 
   <p class="hint-note" id="note" aria-live="polite"></p>
@@ -333,37 +371,40 @@
   <details class="rules">
     <summary>Як грати</summary>
     <div>
-      <p>У кожному <b>рядку</b>, кожному <b>стовпці</b> й кожному <b>квадраті 3×3</b> мають стояти
-         всі цифри від 1 до 9 — і кожна лише один раз.</p>
-      <p>Світлі цифри вже стоять і не змінюються. Обери порожню клітинку й натисни цифру —
-         якщо цифра поставлена неправильно, вона підсвітиться рожевим.</p>
-      <p><b>Олівець</b> — щоб записати в клітинку кілька можливих цифр і не тримати їх у голові.
-         <b>Підказка</b> відкриває одну правильну цифру. <b>Назад</b> скасовує останній хід.</p>
-      <p>Задача завжди має рівно один розвʼязок, тож вгадувати не треба — усе можна вирахувати.
-         Нових задач нескінченно: щойно розвʼязала, натискай «нова».</p>
+      <p>Кожне слово має своє означення: <b>лежачі</b> читаються злiва направо,
+         <b>стоячі</b> — згори вниз. Номер слова стоїть у його першій клітинці.</p>
+      <p>Обери клітинку й пиши літери — з клавіатури або з рядка літер під полем.
+         Клік по вибраній клітинці (або пробіл) <b>повертає слово</b>: перемикає
+         між лежачим і стоячим. Означення поточного слова видно над полем.</p>
+      <p>Слова перетинаються, тому спільна літера мусить пасувати обом. Якщо літера
+         поставлена неправильно, вона підсвітиться рожевим. <b>Підказка</b> відкриває
+         одну правильну літеру, <b>назад</b> скасовує останній хід.</p>
+      <p>Розгадане слово в списку перекреслюється. Нових кросвордів нескінченно:
+         щойно розгадала — натискай «новий».</p>
     </div>
   </details>
 </main>
 
 <div id="win" role="dialog" aria-modal="true" aria-labelledby="win-title">
   <div class="win-card">
-    <p class="title" id="win-title">Готово.</p>
+    <p class="title" id="win-title">Усі слова на місці.</p>
     <p class="sub" id="win-sub"></p>
     <div class="row">
-      <button class="tool" type="button" id="w-next">наступна</button>
+      <button class="tool" type="button" id="w-next">наступний</button>
       <button class="tool" type="button" id="w-close">подивитись на поле</button>
     </div>
   </div>
 </div>
 
-<script src="sudoku-engine.js"></script>
-<script src="sudoku-game.js"></script>
+<script src="crossword-words.js"></script>
+<script src="crossword-engine.js"></script>
+<script src="crossword-game.js"></script>
 <script>
 (() => {
   'use strict';
 
-  const E = window.SudokuEngine;
-  const Game = window.SudokuGame;
+  const E = window.CrosswordEngine;
+  const Game = window.CrosswordGame;
   const $ = (id) => document.getElementById(id);
 
   const DIFFS = [
@@ -372,7 +413,7 @@
     ['hard', 'складно'],
     ['expert', 'дуже складно']
   ];
-  const STORE_KEY = 'etd-sudoku';
+  const STORE_KEY = 'etd-crossword';
 
   const store = {
     read() {
@@ -391,8 +432,10 @@
   let difficulty = DIFFS.some(([k]) => k === saved.difficulty) ? saved.difficulty : 'easy';
   let game = null;
   let selected = -1;
-  let notesMode = false;
+  let dir = 'a';                       // 'a' — лежачі, 'd' — стоячі
   let showMistakes = saved.check !== false;
+  let cells = [];
+  let clueButtons = new Map();         // ключ «напрямок+номер» → кнопка в списку
 
   /* ───────── зорі на тлі ───────── */
   (() => {
@@ -426,35 +469,17 @@
     requestAnimationFrame(frame);
   })();
 
-  /* ───────── розмітка ───────── */
-  const board = $('board');
-  const cells = [];
-  for (let i = 0; i < 81; i++) {
-    const b = document.createElement('button');
-    b.type = 'button';
-    b.className = 'cell';
-    const c = i % 9, r = (i / 9) | 0;
-    if (c % 3 === 2) b.classList.add('r3');
-    if (r % 3 === 2) b.classList.add('b3');
-    b.dataset.i = i;
-    b.setAttribute('role', 'gridcell');
-    const v = document.createElement('span'); v.className = 'v';
-    const ns = document.createElement('span'); ns.className = 'ns';
-    for (let d = 1; d <= 9; d++) ns.appendChild(document.createElement('i'));
-    b.append(v, ns);
-    board.appendChild(b);
-    cells.push(b);
-  }
+  /* ───────── розмітка, що не залежить від задачі ───────── */
 
   const pad = $('pad');
   const keys = [];
-  for (let d = 1; d <= 9; d++) {
+  for (const ch of E.ALPHABET) {
     const b = document.createElement('button');
     b.type = 'button';
     b.className = 'key';
-    b.dataset.d = d;
-    b.innerHTML = `${d}<span class="left"></span>`;
-    b.setAttribute('aria-label', 'цифра ' + d);
+    b.dataset.ch = ch;
+    b.textContent = ch;
+    b.setAttribute('aria-label', 'літера ' + ch);
     pad.appendChild(b);
     keys.push(b);
   }
@@ -478,6 +503,17 @@
       : `${m}:${String(s % 60).padStart(2, '0')}`;
   };
   const note = (text) => { $('note').textContent = text || ''; };
+  const key = (entry) => entry.dir + entry.num;
+
+  // 1 літера, 2 літери, 5 літер — інакше око спотикається
+  const plural = (n, one, few, many) => {
+    const t = n % 100;
+    if (t >= 11 && t <= 14) return many;
+    const d = n % 10;
+    if (d === 1) return one;
+    if (d >= 2 && d <= 4) return few;
+    return many;
+  };
 
   function persist() {
     if (game) saved.games[difficulty] = game.serialize();
@@ -486,51 +522,130 @@
     store.write(saved);
   }
 
-  /* ───────── малювання ───────── */
-  function render() {
-    const conflict = game.conflicts();
-    const wrong = showMistakes ? game.mistakes() : new Set();
-    const selVal = selected >= 0 ? game.values[selected] : 0;
-    const selRow = selected >= 0 ? (selected / 9) | 0 : -1;
-    const selCol = selected >= 0 ? selected % 9 : -1;
-    const selBox = selected >= 0 ? E.BOX_OF[selected] : -1;
+  /* ───────── поле під конкретну задачу ───────── */
 
-    for (let i = 0; i < 81; i++) {
+  // Клітинка має вміститися і по ширині екрана, і по висоті — разом із усім іншим на сторінці
+  function fitBoard() {
+    if (!game) return;
+    const room = Math.min(document.documentElement.clientWidth - 40, 640);
+    const px = Math.max(18, Math.min(42, Math.min(room / game.cols, innerHeight * .056)));
+    document.documentElement.style.setProperty('--cell', px.toFixed(2) + 'px');
+  }
+
+  function buildBoard() {
+    const board = $('board');
+    board.textContent = '';
+    cells = [];
+    fitBoard();
+    board.style.gridTemplateColumns = `repeat(${game.cols}, var(--cell))`;
+
+    const numberAt = new Map();
+    for (const e of game.entries) if (!numberAt.has(e.cells[0])) numberAt.set(e.cells[0], e.num);
+
+    for (let i = 0; i < game.size; i++) {
+      const b = document.createElement('button');
+      b.type = 'button';
+      b.dataset.i = i;
+      if (game.isBlock(i)) {
+        b.className = 'cell block';
+        b.disabled = true;
+        b.setAttribute('aria-hidden', 'true');
+        b.tabIndex = -1;
+      } else {
+        b.className = 'cell';
+        b.setAttribute('role', 'gridcell');
+        if (numberAt.has(i)) {
+          const n = document.createElement('span');
+          n.className = 'n';
+          n.textContent = numberAt.get(i);
+          b.appendChild(n);
+        }
+        const v = document.createElement('span');
+        v.className = 'v';
+        b.appendChild(v);
+      }
+      board.appendChild(b);
+      cells.push(b);
+    }
+  }
+
+  function buildClues() {
+    clueButtons = new Map();
+    const lists = { a: $('across'), d: $('down') };
+    lists.a.textContent = '';
+    lists.d.textContent = '';
+
+    for (const e of game.entries) {
+      const li = document.createElement('li');
+      const b = document.createElement('button');
+      b.type = 'button';
+      b.className = 'clue';
+      b.dataset.dir = e.dir;
+      b.dataset.num = e.num;
+      b.innerHTML = '<span class="num"></span><span class="text"></span>';
+      b.querySelector('.num').textContent = e.num + '.';
+      b.querySelector('.text').textContent = `${e.clue} (${e.len})`;
+      li.appendChild(b);
+      lists[e.dir].appendChild(li);
+      clueButtons.set(key(e), b);
+    }
+  }
+
+  /* ───────── малювання ───────── */
+
+  function render() {
+    const wrong = showMistakes ? game.mistakes() : new Set();
+    const entry = selected >= 0 ? game.entryFor(selected, dir) : null;
+    const inWord = new Set(entry ? entry.cells : []);
+
+    for (let i = 0; i < game.size; i++) {
       const cell = cells[i];
-      const v = game.values[i];
+      if (game.isBlock(i)) continue;
+      const ch = game.letters[i];
       const cl = cell.classList;
+      const own = game.entryOf.a[i] || game.entryOf.d[i];
 
       cl.toggle('given', game.isGiven(i));
-      cl.toggle('mine', !game.isGiven(i) && !!v && !game.hinted.has(i));
       cl.toggle('hint', game.hinted.has(i));
-      cl.toggle('bad', !!v && (conflict.has(i) || wrong.has(i)));
+      cl.toggle('mine', !!ch && !game.isGiven(i) && !game.hinted.has(i));
+      cl.toggle('bad', !!ch && wrong.has(i));
       cl.toggle('sel', i === selected);
-      cl.toggle('peer', i !== selected && selected >= 0 &&
-        (((i / 9) | 0) === selRow || i % 9 === selCol || E.BOX_OF[i] === selBox));
-      cl.toggle('twin', i !== selected && !!v && v === selVal);
-      cl.toggle('notes', !v && game.notes[i] !== 0);
+      cl.toggle('word', i !== selected && inWord.has(i));
 
-      cell.firstChild.textContent = v || '';
-      const ns = cell.lastChild.children;
-      for (let d = 1; d <= 9; d++) ns[d - 1].textContent = (!v && game.hasNote(i, d)) ? d : '';
-
-      const label = v ? String(v) : 'порожньо';
-      cell.setAttribute('aria-label', `рядок ${((i / 9) | 0) + 1}, стовпець ${i % 9 + 1}: ${label}`);
+      cell.querySelector('.v').textContent = ch || '';
+      const where = own ? `${own.num}` : '';
+      cell.setAttribute('aria-label',
+        `рядок ${((i / game.cols) | 0) + 1}, стовпець ${i % game.cols + 1}${where ? ', слово ' + where : ''}: ` +
+        (ch || 'порожньо'));
     }
 
-    for (let d = 1; d <= 9; d++) {
-      const left = game.remaining(d);
-      const k = keys[d - 1];
-      k.querySelector('.left').textContent = left > 0 ? left : '';
-      k.classList.toggle('spent', left <= 0);
+    for (const e of game.entries) {
+      const b = clueButtons.get(key(e));
+      if (!b) continue;
+      const done = game.entrySolved(e);
+      b.classList.toggle('done', done);
+      b.setAttribute('aria-current', String(!!entry && entry === e));
+    }
+
+    if (entry) {
+      $('current').innerHTML = '<span class="who"></span>';
+      $('current').querySelector('.who').textContent =
+        `${entry.num} ${entry.dir === 'a' ? 'лежаче' : 'стояче'}, ` +
+        `${entry.len} ${plural(entry.len, 'літера', 'літери', 'літер')}`;
+      $('current').append(entry.clue);
+    } else {
+      $('current').textContent = 'обери клітинку — і побачиш означення';
     }
 
     $('t-undo').disabled = game.history.length === 0 || game.done;
     $('t-hint').disabled = game.done;
     $('t-erase').disabled = game.done;
-    $('t-notes').setAttribute('aria-pressed', String(notesMode));
+    $('t-flip').disabled = game.done;
     $('t-check').setAttribute('aria-pressed', String(showMistakes));
     [...diffs.children].forEach((b) => b.setAttribute('aria-pressed', String(b.dataset.k === difficulty)));
+
+    const solvedNow = game.solvedCount();
+    $('progress').textContent = `${solvedNow} / ${game.entries.length}`;
 
     const stat = saved.stats[difficulty] || {};
     $('solved').textContent = stat.solved || 0;
@@ -541,27 +656,35 @@
   }
 
   /* ───────── партія ───────── */
+
   function startGame(fresh) {
+    const board = $('board');
     board.classList.add('loading');
-    note(fresh ? 'розкладаю числа…' : '');
+    note(fresh ? 'сплітаю слова…' : '');
     selected = -1;
+    dir = 'a';
 
     const begin = () => {
       const raw = fresh ? null : saved.games[difficulty];
       let g = raw ? Game.restore(raw) : null;
       if (g && g.done) g = null; // завершену партію не відновлюємо
+      // збережена партія може бути старіша за словник — тоді вона не відновиться
+      const stale = !fresh && !!raw && !g;
       if (!g) g = Game.create(difficulty);
       game = g;
       game.start();
+      buildBoard();
+      buildClues();
       board.classList.remove('loading');
       document.body.classList.remove('won');
-      note('');
-      // перша порожня клітинка — щоб було видно, з чого починати
-      selected = game.values.findIndex((v, i) => !v && !game.isGiven(i));
+      note(stale ? 'словник оновився — стару партію довелося замінити новою' : '');
+      // перше слово зі списку — щоб було видно, з чого починати
+      const first = game.entries[0];
+      if (first) { dir = first.dir; selected = first.cells.find((i) => !game.letters[i]) ?? first.cells[0]; }
       persist();
       render();
     };
-    // даємо браузеру перемалювати «розкладаю числа…» до важкого обчислення
+    // даємо браузеру перемалювати «сплітаю слова…» до важкого обчислення
     setTimeout(begin, 30);
   }
 
@@ -576,11 +699,15 @@
 
     document.body.classList.add('won');
     const label = DIFFS.find(([k]) => k === difficulty)[1];
-    $('win-sub').textContent = `${label} · ${fmt(time)}` +
+    const n = game.entries.length;
+    $('win-sub').textContent = `${label} · ${n} ${plural(n, 'слово', 'слова', 'слів')} · ${fmt(time)}` +
       (game.hints ? ` · підказок: ${game.hints}` : ' · без підказок');
     const w = $('win');
     w.classList.add('on');
+    // проявляємо наступним кадром, але й через таймер: якщо вкладку приспали,
+    // кадру можна не дочекатися, а вітання має бути видно
     requestAnimationFrame(() => w.classList.add('shown'));
+    setTimeout(() => w.classList.add('shown'), 60);
     render();
   }
 
@@ -591,32 +718,69 @@
   }
 
   function act(fn) {
-    if (!game || game.done) return;
+    if (!game || game.done) return false;
     const changed = fn();
     if (changed) { persist(); render(); }
     if (game.done) win();
     return changed;
   }
 
-  function enter(digit) {
+  // Наступна клітинка в поточному слові — щоб можна було просто писати далі
+  function step(forward) {
+    const entry = game.entryFor(selected, dir);
+    if (!entry) return;
+    const at = entry.cells.indexOf(selected);
+    const next = at + (forward ? 1 : -1);
+    if (next >= 0 && next < entry.cells.length) selected = entry.cells[next];
+  }
+
+  function enter(ch) {
     if (selected < 0) { note('спершу обери клітинку'); return; }
-    if (game.isGiven(selected)) { note('ця цифра стояла тут від початку'); return; }
     note('');
-    act(() => notesMode ? game.toggleNote(selected, digit) : game.place(selected, digit));
+    const placed = act(() => game.place(selected, ch));
+    if (placed && !game.done) { step(true); render(); }
+  }
+
+  function flip() {
+    if (selected < 0) return;
+    const other = dir === 'a' ? 'd' : 'a';
+    if (!game.entryOf[other][selected]) { note('тут слово лише в один бік'); return; }
+    dir = other;
+    note('');
+    render();
+  }
+
+  function focusEntry(entry) {
+    dir = entry.dir;
+    selected = entry.cells.find((i) => !game.letters[i]) ?? entry.cells[0];
+    note('');
+    render();
   }
 
   /* ───────── події ───────── */
-  board.addEventListener('click', (e) => {
+
+  $('board').addEventListener('click', (e) => {
     const cell = e.target.closest('.cell');
-    if (!cell) return;
-    selected = Number(cell.dataset.i);
+    if (!cell || cell.classList.contains('block')) return;
+    const i = Number(cell.dataset.i);
+    if (i === selected) { flip(); return; }
+    selected = i;
+    // якщо в цьому напрямку слова немає — беремо той, який є
+    if (!game.entryOf[dir][i]) dir = dir === 'a' ? 'd' : 'a';
     note('');
     render();
   });
 
   pad.addEventListener('click', (e) => {
-    const key = e.target.closest('.key');
-    if (key) enter(Number(key.dataset.d));
+    const k = e.target.closest('.key');
+    if (k) enter(k.dataset.ch);
+  });
+
+  document.querySelector('.clues').addEventListener('click', (e) => {
+    const b = e.target.closest('.clue');
+    if (!b) return;
+    const entry = game.entries.find((x) => x.dir === b.dataset.dir && x.num === Number(b.dataset.num));
+    if (entry) focusEntry(entry);
   });
 
   diffs.addEventListener('click', (e) => {
@@ -628,14 +792,11 @@
     startGame(false); // партію цієї складності підхоплюємо там, де лишили
   });
 
-  $('t-notes').addEventListener('click', () => {
-    notesMode = !notesMode;
-    note(notesMode ? 'олівець: цифри записуються дрібно, як можливі' : '');
-    render();
-  });
+  $('t-flip').addEventListener('click', flip);
   $('t-erase').addEventListener('click', () => {
     if (selected < 0) { note('спершу обери клітинку'); return; }
-    act(() => game.erase(selected));
+    const gone = act(() => game.erase(selected));
+    if (!gone) { step(false); render(); } // порожня клітинка — просто йдемо назад
   });
   $('t-undo').addEventListener('click', () => {
     if (!game.undo()) return;
@@ -643,12 +804,12 @@
   });
   $('t-hint').addEventListener('click', () => {
     act(() => {
-      const at = game.hint(selected >= 0 ? selected : null);
+      const at = game.hint(selected >= 0 ? selected : null, dir);
       if (at < 0) return false;
       selected = at;
       cells[at].classList.add('flash');
       setTimeout(() => cells[at].classList.remove('flash'), 600);
-      note('підказка: цю цифру видно з рядка, стовпця й квадрата');
+      note('підказка: одна літера відкрита');
       return true;
     });
   });
@@ -662,32 +823,49 @@
   $('w-close').addEventListener('click', closeWin);
 
   addEventListener('keydown', (e) => {
-    if (e.metaKey || e.altKey) return;
+    if (e.altKey) return;
     if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'z') { e.preventDefault(); $('t-undo').click(); return; }
-    if (e.ctrlKey) return;
+    if (e.ctrlKey || e.metaKey) return;
+    if (!game) return;
 
-    if (e.key >= '1' && e.key <= '9') { e.preventDefault(); enter(Number(e.key)); return; }
-    if (e.key === 'Backspace' || e.key === 'Delete' || e.key === '0') {
-      e.preventDefault(); $('t-erase').click(); return;
-    }
-    const move = { ArrowUp: -9, ArrowDown: 9, ArrowLeft: -1, ArrowRight: 1 }[e.key];
-    if (move) {
+    const ch = e.key.length === 1 ? e.key.toUpperCase() : '';
+    if (ch && E.isLetter(ch)) { e.preventDefault(); enter(ch); return; }
+
+    if (e.key === ' ') { e.preventDefault(); flip(); return; }
+    if (e.key === 'Backspace' || e.key === 'Delete') { e.preventDefault(); $('t-erase').click(); return; }
+    if (e.key === 'Tab') {
       e.preventDefault();
-      if (selected < 0) selected = 40;
-      else {
-        const next = selected + move;
-        const sameRow = Math.abs(move) === 1 && ((next / 9) | 0) === ((selected / 9) | 0);
-        if (next >= 0 && next < 81 && (Math.abs(move) === 9 || sameRow)) selected = next;
-      }
-      note(''); render();
-      cells[selected].focus({ preventScroll: true });
+      const order = game.entries;
+      const cur = game.entryFor(selected, dir);
+      const at = cur ? order.indexOf(cur) : -1;
+      const next = order[(at + (e.shiftKey ? order.length - 1 : 1)) % order.length];
+      if (next) focusEntry(next);
       return;
     }
-    const k = e.key.toLowerCase();
-    if (k === 'n' || k === 'т') { e.preventDefault(); $('t-notes').click(); }
-    else if (k === 'h' || k === 'р') { e.preventDefault(); $('t-hint').click(); }
-    else if (k === 'u') { e.preventDefault(); $('t-undo').click(); }
+
+    const move = {
+      ArrowUp: [-1, 0], ArrowDown: [1, 0], ArrowLeft: [0, -1], ArrowRight: [0, 1]
+    }[e.key];
+    if (!move) return;
+    e.preventDefault();
+    if (selected < 0) { selected = game.entries[0] ? game.entries[0].cells[0] : -1; }
+    else {
+      const wanted = move[0] ? 'd' : 'a';
+      if (dir !== wanted && game.entryOf[wanted][selected]) dir = wanted; // стрілка поперек — повертає слово
+      let r = ((selected / game.cols) | 0) + move[0];
+      let c = (selected % game.cols) + move[1];
+      while (r >= 0 && c >= 0 && r < game.rows && c < game.cols) {
+        const k = r * game.cols + c;
+        if (!game.isBlock(k)) { selected = k; break; }
+        r += move[0]; c += move[1];
+      }
+    }
+    note('');
+    render();
+    if (selected >= 0) cells[selected].focus({ preventScroll: true });
   });
+
+  addEventListener('resize', fitBoard, { passive: true });
 
   document.addEventListener('visibilitychange', () => {
     if (!game) return;
@@ -698,12 +876,15 @@
 
   setInterval(() => { if (game && !game.done && !document.hidden) $('timer').textContent = fmt(game.time()); }, 1000);
 
-  // Доступ для сторінки перевірок sudoku-ui-tests.html
-  window.__sudokuTest = {
+  // Доступ для сторінки перевірок crossword-ui-tests.html
+  window.__crosswordTest = {
     get game() { return game; },
     get selected() { return selected; },
+    get dir() { return dir; },
     get difficulty() { return difficulty; },
-    cells, keys
+    get cells() { return cells; },
+    get clueButtons() { return clueButtons; },
+    keys
   };
 
   startGame(false);

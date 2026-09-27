@@ -1,0 +1,353 @@
+<!DOCTYPE html>
+<html lang="uk">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex, nofollow">
+<title>Перевірка рушія кросворда</title>
+<style>
+  body { margin: 0; padding: 2rem 1.25rem; background: #0d0b1f; color: #efe7dc;
+         font: 15px/1.6 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
+  h1 { font-size: 1.2rem; font-weight: 500; margin: 0 0 1.2rem; }
+  #summary { margin: 0 0 1.5rem; padding: .8rem 1rem; border-radius: 8px;
+             background: rgba(239,231,220,.06); }
+  #summary.pass { color: #bfe6b0; } #summary.fail { color: #e58a7a; }
+  .ok   { color: rgba(239,231,220,.55); }
+  .bad  { color: #e58a7a; font-weight: 700; }
+  .info { color: #f2b872; margin-top: 1rem; }
+  div { white-space: pre-wrap; }
+</style>
+</head>
+<body>
+<h1>Перевірка рушія кросворда</h1>
+<p id="summary">виконую…</p>
+<div id="out"></div>
+
+<script src="crossword-words.js"></script>
+<script src="crossword-engine.js"></script>
+<script src="crossword-game.js"></script>
+<script>
+(() => {
+  'use strict';
+  const E = window.CrosswordEngine;
+  const G = window.CrosswordGame;
+  const WORDS = window.CrosswordWords;
+  const out = document.getElementById('out');
+  let fails = 0, total = 0;
+
+  const line = (text, cls) => {
+    const d = document.createElement('div');
+    d.className = cls || '';
+    d.textContent = text;
+    out.appendChild(d);
+  };
+  const ok = (cond, msg) => {
+    total++;
+    if (cond) line('ok   ' + msg, 'ok');
+    else { fails++; line('FAIL ' + msg, 'bad'); }
+  };
+  const avg = (a) => Math.round(a.reduce((x, y) => x + y, 0) / a.length);
+
+  /* ───────── словник ───────── */
+
+  line(`у словнику ${WORDS.length} слів`, 'info');
+  ok(WORDS.length >= 250, 'словник достатньо великий (250+ слів)');
+
+  const badLetters = WORDS.filter(({ word }) => [...word].some((ch) => !E.ALPHABET.includes(ch)));
+  ok(badLetters.length === 0,
+     'усі слова — з українських великих літер' + (badLetters.length ? ': ' + badLetters.map((x) => x.word).join(' ') : ''));
+
+  const badLen = WORDS.filter(({ word }) => word.length < 3 || word.length > 9);
+  ok(badLen.length === 0,
+     'довжина слів від 3 до 9' + (badLen.length ? ': ' + badLen.map((x) => x.word).join(' ') : ''));
+
+  const noClue = WORDS.filter(({ clue }) => !clue || !clue.trim());
+  ok(noClue.length === 0, 'у кожного слова є означення');
+
+  const seen = new Set(), dups = [];
+  for (const { word } of WORDS) { if (seen.has(word)) dups.push(word); seen.add(word); }
+  ok(dups.length === 0, 'у словнику немає повторів' + (dups.length ? ': ' + dups.join(' ') : ''));
+
+  const sameClue = new Map();
+  for (const { word, clue } of WORDS) {
+    const k = clue.toLowerCase();
+    if (!sameClue.has(k)) sameClue.set(k, []);
+    sameClue.get(k).push(word);
+  }
+  const clashes = [...sameClue.values()].filter((a) => a.length > 1);
+  ok(clashes.length === 0,
+     'одне означення не веде до двох слів' + (clashes.length ? ': ' + clashes.map((a) => a.join('/')).join(', ') : ''));
+
+  // на кожному рівні мусить бути з чого вибирати
+  for (const [d, spec] of Object.entries(E.LEVELS)) {
+    const fits = WORDS.filter(({ word }) => word.length >= spec.min && word.length <= spec.max);
+    const rareFits = fits.filter((w) => w.tier === 2).length;
+    ok(fits.length >= spec.words * 8, `[${d}] слів потрібної довжини вдосталь (${fits.length} на ${spec.words} у сітці)`);
+    ok(rareFits >= Math.ceil(spec.words * spec.rare) * 3,
+       `[${d}] рідших слів вистачає, щоб сітки не повторювались (${rareFits} на ${spec.words})`);
+  }
+
+  /* ───────── якість означень ───────── */
+
+  const rare = WORDS.filter((w) => w.tier === 2).length;
+  line(`рідших слів: ${rare} з ${WORDS.length}`, 'info');
+  ok(rare >= 60, 'у словнику достатньо рідших слів для складних рівнів');
+
+  const stub = WORDS.filter(({ clue }) => clue.length < 12);
+  ok(stub.length === 0,
+     'немає означень-обрубків, коротших за 12 знаків' + (stub.length ? ': ' + stub.map((x) => x.word).join(' ') : ''));
+
+  // означення не повинно містити саме слово — інакше це не загадка
+  const giveaway = WORDS.filter(({ word, clue }) => clue.toUpperCase().includes(word));
+  ok(giveaway.length === 0,
+     'означення не містить самого слова' + (giveaway.length ? ': ' + giveaway.map((x) => x.word).join(' ') : ''));
+
+  // «Нею ходять», «Ним пишуть» — рівно той словниковий тон, якого тут не треба
+  const dull = WORDS.filter(({ clue }) => /^(Ним|Нею|Ними|Його|Її|Їх)\s+\S+(ть|ться)\b/.test(clue));
+  ok(dull.length <= 12,
+     `означень у тлумачному тоні небагато (${dull.length})` + (dull.length > 12 ? ': ' + dull.map((x) => x.word).join(' ') : ''));
+
+  const starts = new Map();
+  for (const { word, clue } of WORDS) {
+    const k = clue.split(/\s+/)[0].toLowerCase();
+    if (!starts.has(k)) starts.set(k, []);
+    starts.get(k).push(word);
+  }
+  const sameStart = [...starts.entries()].filter(([, a]) => a.length > WORDS.length / 12);
+  ok(sameStart.length === 0,
+     'означення починаються по-різному' + (sameStart.length ? ': ' + sameStart.map(([k, a]) => `${k} ×${a.length}`).join(', ') : ''));
+
+  /* ───────── розбір сітки ───────── */
+
+  // ЛІС лежачи, СІК стоячи, спільна літера «С» у правому верхньому куті
+  const letters = [
+    'Л', 'І', 'С',
+    '',  '',  'І',
+    '',  '',  'К'
+  ];
+  const manual = E.entriesOf(letters, 3, 3);
+  const across = manual.find((e) => e.dir === 'a');
+  const down = manual.find((e) => e.dir === 'd');
+  ok(manual.length === 2, 'entriesOf(): у простій сітці знайдено рівно два слова');
+  ok(across && across.word === 'ЛІС', 'лежаче слово прочитано злiва направо');
+  ok(down && down.word === 'СІК', 'стояче слово прочитано згори вниз');
+  ok(across && across.cells.join(',') === '0,1,2', 'клітинки лежачого слова — це один рядок');
+  ok(down && down.cells.join(',') === '2,5,8', 'клітинки стоячого слова — це один стовпець');
+  ok(across && down && across.num === 1 && down.num === 2, 'слова пронумеровані за порядком читання');
+  ok(across && E.CLUE_OF.get('ЛІС') === across.clue, 'означення підтягується зі словника');
+  ok(E.entriesOf(['Л', '', '', '', '', '', '', '', ''], 3, 3).length === 0,
+     'одна самотня літера словом не вважається');
+
+  /* ───────── складання задач ───────── */
+
+  const N = Number(new URLSearchParams(location.search).get('n') || 12);
+  const known = new Set(WORDS.map(({ word }) => word));
+  const TIER = new Map(WORDS.map(({ word, tier }) => [word, tier]));
+  const rareShare = {};
+
+  for (const d of ['easy', 'medium', 'hard', 'expert']) {
+    const spec = E.LEVELS[d];
+    let wordsOk = 0, crossOk = 0, strayOk = 0, clueOk = 0, sizeOk = 0, givenOk = 0, uniqOk = 0, numsOk = 0;
+    const counts = [], times = [], sizes = [], rares = [];
+
+    for (let i = 0; i < N; i++) {
+      const t0 = performance.now();
+      const p = E.generate(d, { seed: 500 + i * 13 });
+      times.push(performance.now() - t0);
+      counts.push(p.entries.length);
+      sizes.push(Math.max(p.rows, p.cols));
+      rares.push(p.entries.filter((e) => TIER.get(e.word) === 2).length / p.entries.length);
+
+      if (p.entries.length >= Math.ceil(spec.words * .7)) wordsOk++;
+      if (E.strayWords(p).length === 0) strayOk++;
+      if (p.entries.every((e) => e.clue && known.has(e.word))) clueOk++;
+      if (p.rows <= spec.size && p.cols <= spec.size) sizeOk++;
+      if (p.given.every((k) => !!p.letters[k])) givenOk++;
+
+      // слова не повторюються в одній сітці
+      const inGrid = p.entries.map((e) => e.word);
+      if (new Set(inGrid).size === inGrid.length) uniqOk++;
+
+      // Нумерація суцільна: кожен номер від 1 до останнього має своє означення
+      // хоча б в одному зі списків. Пропуск у «Лежачих» — це нормально
+      // (слово читається вниз), а пропуск в обох означав би номер без питання.
+      const nums = new Set(p.entries.map((e) => e.num));
+      let solid = nums.size === Math.max(...nums);
+      for (let n = 1; n <= Math.max(...nums); n++) if (!nums.has(n)) solid = false;
+      const numbered = new Set(p.entries.map((e) => e.cells[0])).size === nums.size;
+      if (solid && numbered) numsOk++;
+
+      // кожне слово, крім першого, мусить із кимось перетинатися
+      const owners = new Map();
+      for (const e of p.entries) for (const k of e.cells) {
+        if (!owners.has(k)) owners.set(k, []);
+        owners.get(k).push(e);
+      }
+      const crossed = p.entries.filter((e) => e.cells.some((k) => owners.get(k).length > 1));
+      let linked = crossed.length === p.entries.length;
+
+      // на перетині літера одна для обох слів (інакше сітку не розгадати)
+      for (const [k, list] of owners) {
+        if (list.length < 2) continue;
+        for (const e of list) if (e.word[e.cells.indexOf(k)] !== p.letters[k]) linked = false;
+      }
+      if (linked) crossOk++;
+    }
+
+    rareShare[d] = rares.reduce((a, b) => a + b, 0) / rares.length;
+    line(`[${d}] слів ${Math.min(...counts)}–${Math.max(...counts)} (сер. ${avg(counts)}), ` +
+         `рідших ${Math.round(rareShare[d] * 100)}%, поле до ${Math.max(...sizes)}, ` +
+         `час сер. ${avg(times)}мс, макс ${Math.round(Math.max(...times))}мс`, 'info');
+    ok(wordsOk === N, `${d}: слів у сітці не менше ніж ${Math.ceil(spec.words * .7)} (${wordsOk}/${N})`);
+    ok(crossOk === N, `${d}: усі слова зчеплені й літери на перетинах збігаються (${crossOk}/${N})`);
+    ok(strayOk === N, `${d}: у сітці не читається нічого, крім задуманих слів (${strayOk}/${N})`);
+    ok(clueOk === N, `${d}: кожне слово в сітці має означення (${clueOk}/${N})`);
+    ok(uniqOk === N, `${d}: слова в одній сітці не повторюються (${uniqOk}/${N})`);
+    ok(numsOk === N, `${d}: нумерація суцільна, кожен номер має означення (${numsOk}/${N})`);
+    ok(sizeOk === N, `${d}: сітка вміщується в ${spec.size}×${spec.size} (${sizeOk}/${N})`);
+    ok(givenOk === N, `${d}: відкриті від початку літери стоять у справжніх клітинках (${givenOk}/${N})`);
+    ok(avg(times) < 600, `${d}: складання швидше за 0.6с у середньому`);
+    ok(Math.max(...times) < 2500, `${d}: найдовше складання швидше за 2.5с`);
+  }
+
+  ok(rareShare.hard > rareShare.easy && rareShare.expert > rareShare.medium,
+     'складні рівні беруть рідші слова частіше за легкі');
+  ok(rareShare.easy < .25, 'на легкому рівні переважають звичні слова');
+  ok(rareShare.hard > .4, 'на складному рівні рідших слів більшість сітки');
+
+  // краї сітки обрізані: у першому й останньому рядку та стовпці є хоч одна літера
+  const trimmed = E.generate('medium', { seed: 11 });
+  const rowHas = (r) => Array.from({ length: trimmed.cols }, (_, c) => trimmed.letters[r * trimmed.cols + c]).some(Boolean);
+  const colHas = (c) => Array.from({ length: trimmed.rows }, (_, r) => trimmed.letters[r * trimmed.cols + c]).some(Boolean);
+  ok(rowHas(0) && rowHas(trimmed.rows - 1) && colHas(0) && colHas(trimmed.cols - 1),
+     'порожні краї сітки обрізано');
+  ok(trimmed.unknown.length === 0, 'немає слів без означення');
+
+  /* ───────── повторюваність за seed ───────── */
+  const key = (p) => p.letters.map((ch) => ch || '.').join('');
+  ok(key(E.generate('medium', { seed: 42 })) === key(E.generate('medium', { seed: 42 })),
+     'однаковий seed -> однакова сітка');
+  ok(key(E.generate('medium', { seed: 42 })) !== key(E.generate('medium', { seed: 43 })),
+     'інший seed -> інша сітка');
+
+  /* ───────── логіка партії ───────── */
+
+  const base = E.generate('easy', { seed: 7 });
+  const fresh = () => new G({
+    difficulty: 'easy', rows: base.rows, cols: base.cols,
+    solution: base.letters, entries: base.entries, given: base.given
+  });
+
+  let g = fresh();
+  const open = g.solution.map((ch, i) => (ch && !g.isGiven(i) ? i : -1)).filter((i) => i >= 0);
+  const spot = open[0];
+  const right = g.solution[spot];
+  const wrong = right === 'А' ? 'Б' : 'А';
+
+  ok(g.total() === g.solution.filter(Boolean).length, 'усі клітинки сітки пораховані');
+  ok(g.filled() === g.given.size, 'нова партія починається лише з відкритих літер');
+  ok(g.isBlock(g.solution.indexOf('')) || g.solution.every(Boolean), 'порожні клітинки позначені як недоступні');
+  ok(g.place(spot, wrong) && g.letters[spot] === wrong, 'літера ставиться у вільну клітинку');
+  ok(g.mistakes().has(spot), 'mistakes(): помилкову літеру видно');
+  ok(g.place(spot, wrong) && g.letters[spot] === '', 'повторний дотик тієї ж літери стирає її');
+  ok(g.place(spot, 'Q') === false && g.place(spot, '5') === false, 'чужі знаки не ставляться');
+
+  g = fresh();
+  const givenCell = [...g.given][0];
+  if (givenCell != null) {
+    ok(g.place(givenCell, wrong) === false && g.letters[givenCell] === g.solution[givenCell],
+       'відкриту від початку літеру змінити не можна');
+    ok(g.erase(givenCell) === false, 'стирачка не чіпає відкритих літер');
+  } else {
+    ok(true, 'на цьому рівні відкритих літер немає — перевіряти нічого');
+    ok(true, 'стирачка не чіпає відкритих літер (немає таких)');
+  }
+  const blockCell = g.solution.findIndex((ch) => !ch);
+  ok(blockCell < 0 || g.place(blockCell, right) === false, 'у порожню клітинку сітки писати не можна');
+
+  g = fresh();
+  g.place(spot, wrong);
+  ok(g.undo() && g.letters[spot] === '', 'скасування повертає попередній стан');
+  ok(g.undo() === false, 'скасовувати більше нічого');
+
+  g = fresh();
+  const at = g.hint(spot, 'a');
+  ok(at === spot && g.letters[spot] === right, 'підказка відкриває правильну літеру');
+  ok(g.hints === 1 && g.hinted.has(spot), 'підказки рахуються й позначаються');
+  g = fresh();
+  g.place(spot, wrong);
+  ok(g.hint(null, 'a') === spot && g.letters[spot] === right, 'підказка спершу виправляє помилку');
+
+  g = fresh();
+  const entry = g.entries[0];
+  ok(g.entryFor(entry.cells[0], entry.dir) === entry, 'entryFor(): слово за клітинкою й напрямком');
+  ok(g.entryFor(entry.cells[0], entry.dir === 'a' ? 'd' : 'a') != null,
+     'якщо в цьому напрямку слова немає — знаходиться те, яке є');
+  for (const i of entry.cells) if (!g.isGiven(i)) g.place(i, g.solution[i]);
+  ok(g.entrySolved(entry) && g.entryFilled(entry), 'слово, вписане правильно, вважається розгаданим');
+  ok(g.solvedCount() >= 1, 'solvedCount(): розгадані слова рахуються');
+  ok(!g.done, 'одне слово ще не закінчує кросворд');
+
+  g = fresh();
+  for (let i = 0; i < g.size; i++) if (!g.isBlock(i) && !g.isGiven(i)) g.place(i, g.solution[i]);
+  ok(g.done, 'уся сітка правильно -> партія завершена');
+  ok(g.solvedCount() === g.entries.length, 'у завершеній партії розгадані всі слова');
+  ok(g.mistakes().size === 0, 'у завершеній партії немає помилок');
+  ok(g.place(spot, wrong) === false, 'після перемоги ходи заблоковані');
+
+  /* ───────── збереження ───────── */
+
+  g = fresh();
+  g.place(spot, wrong);
+  g.hint(open[1], 'a');
+  g.elapsed = 12345;
+  const copy = G.restore(JSON.parse(JSON.stringify(g.serialize())));
+  ok(copy && copy.letters.join('') === g.letters.join(''), 'збереження не втрачає вписані літери');
+  ok(copy && copy.solution.join('') === g.solution.join(''), 'збереження не втрачає сітку');
+  ok(copy && copy.entries.length === g.entries.length && copy.entries[0].word === g.entries[0].word,
+     'слова й означення відновлюються з сітки');
+  ok(copy && copy.entries.every((e) => e.clue), 'у відновлених слів є означення');
+  ok(copy && [...copy.given].join(',') === [...g.given].join(',') &&
+     [...copy.hinted].join(',') === [...g.hinted].join(','), 'відкриті літери й підказки відновлюються');
+  ok(copy && copy.difficulty === g.difficulty && copy.elapsed >= 12345 && copy.hints === g.hints,
+     'відновлюються складність, час і кількість підказок');
+  ok(G.restore(null) === null && G.restore({ v: 1, rows: 3, cols: 3, solution: 'ЛІС', letters: '' }) === null,
+     'зіпсоване збереження відкидається');
+
+  // Партія, складена ще зі старим словником: слово в сітці є, а означення до нього
+  // вже немає. Розгадати таке неможливо, тож збереження має бути відкинуте.
+  const gone = 'ЩЩЩЩ';
+  ok(!E.CLUE_OF.has(gone), 'для перевірки взято слово, якого немає у словнику');
+  ok(G.restore({ v: 1, difficulty: 'easy', rows: 1, cols: 4, solution: gone, letters: '    ' }) === null,
+     'партія зі словом, що випало зі словника, не відновлюється');
+  ok(G.restore({ v: 1, difficulty: 'easy', rows: 1, cols: 4, solution: '....', letters: '....' }) === null,
+     'порожня сітка без жодного слова теж відкидається');
+
+  const alive = base.letters.map((ch) => ch || '.').join('');
+  ok(G.restore({
+    v: 1, difficulty: 'easy', rows: base.rows, cols: base.cols,
+    solution: alive, letters: alive.replace(/[^.]/g, ' '), given: []
+  }) !== null, 'партія, усі слова якої є у словнику, відновлюється як була');
+
+  // порожні клітинки не з'їдаються, навіть якщо в сітці є пробіли
+  const wide = fresh();
+  const raw = wide.serialize();
+  ok(raw.solution.length === wide.rows * wide.cols && raw.letters.length === wide.rows * wide.cols,
+     'у збереженні рівно стільки знаків, скільки клітинок');
+
+  g = fresh();
+  g.start(1000); g.pause(4000);
+  ok(g.time(9999) === 3000, 'секундомір рахує лише активний час');
+  g.start(5000);
+  ok(g.time(6000) === 4000, 'секундомір продовжує з накопиченого');
+
+  const s = document.getElementById('summary');
+  s.className = fails ? 'fail' : 'pass';
+  s.textContent = fails
+    ? `${fails} провалів із ${total} перевірок`
+    : `усі ${total} перевірок пройдено`;
+  document.title = (fails ? 'FAIL ' : 'PASS ') + `${total - fails}/${total}`;
+})();
+</script>
+</body>
+</html>

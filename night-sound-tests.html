@@ -1,0 +1,149 @@
+<!DOCTYPE html>
+<html lang="uk">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex, nofollow">
+<title>Перевірка звуку нічного неба</title>
+<style>
+  body { margin: 0; padding: 2rem 1.25rem; background: #0d0b1f; color: #efe7dc;
+         font: 15px/1.6 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
+  h1 { font-size: 1.2rem; font-weight: 500; margin: 0 0 1.2rem; }
+  #summary { margin: 0 0 1.5rem; padding: .8rem 1rem; border-radius: 8px; background: rgba(239,231,220,.06); }
+  #summary.pass { color: #bfe6b0; } #summary.fail { color: #e58a7a; }
+  .ok { color: rgba(239,231,220,.55); } .bad { color: #e58a7a; font-weight: 700; }
+  .info { color: #f2b872; margin-top: 1rem; }
+  div { white-space: pre-wrap; }
+</style>
+</head>
+<body>
+<h1>Перевірка звуку нічного неба</h1>
+<p id="summary">виконую…</p>
+<div id="out"></div>
+
+<script>
+(async () => {
+  'use strict';
+  const out = document.getElementById('out');
+  let fails = 0, total = 0;
+  const line = (t, c) => { const d = document.createElement('div'); d.className = c || ''; d.textContent = t; out.appendChild(d); };
+  const ok = (cond, msg) => { total++; if (cond) line('ok   ' + msg, 'ok'); else { fails++; line('FAIL ' + msg, 'bad'); } };
+  const wait = (ms) => new Promise((r) => setTimeout(r, ms));
+
+  // вибір слухача не чіпаємо
+  const KEY = 'etd-night-sound';
+  let backup = null;
+  try { backup = localStorage.getItem(KEY); localStorage.removeItem(KEY); } catch {}
+
+  // Замість справжнього звуку слухаємо, що саме сценарій будує:
+  // підмінюємо AudioContext на свій, який усе записує.
+  const Real = window.AudioContext || window.webkitAudioContext;
+  if (!Real) { line('у цьому браузері немає Web Audio — перевіряти нічого', 'bad'); return; }
+
+  const built = { contexts: 0, gains: [], oscillators: 0, convolvers: 0, sources: 0 };
+  class Spy extends Real {
+    constructor() { super(); built.contexts++; }
+    createGain() { const g = super.createGain(); built.gains.push(g); return g; }
+    createOscillator() { built.oscillators++; return super.createOscillator(); }
+    createConvolver() { built.convolvers++; return super.createConvolver(); }
+    createBufferSource() { built.sources++; return super.createBufferSource(); }
+  }
+  window.AudioContext = Spy;
+  window.webkitAudioContext = Spy;
+
+  // Записуємо кожен плавний перехід гучності: так видно, що звук не обривається
+  const realTarget = AudioParam.prototype.setTargetAtTime;
+  const targets = [];
+  AudioParam.prototype.setTargetAtTime = function (value, when, tc) {
+    targets.push({ param: this, value, tc });
+    return realTarget.call(this, value, when, tc);
+  };
+
+  await new Promise((done) => {
+    const s = document.createElement('script');
+    s.src = 'night-sound.js';
+    s.onload = done;
+    s.onerror = () => { line('night-sound.js не завантажився', 'bad'); fails++; done(); };
+    document.body.appendChild(s);
+  });
+  await wait(50);
+
+  const btn = document.querySelector('.night-sound');
+  const api = window.__nightSoundTest;
+  ok(!!btn, 'перемикач зʼявився на сторінці');
+  ok(!!api, 'сценарій відкрив себе перевіркам');
+  if (!btn || !api) { finish(); return; }
+
+  // ───────── усталений стан ─────────
+  ok(btn.getAttribute('aria-pressed') === 'true', 'усталено звук увімкнений');
+  ok(api.on === true, 'сценарій теж вважає звук увімкненим');
+  ok(getComputedStyle(btn).position === 'fixed', 'перемикач тримається в куті екрана');
+  ok(built.contexts === 1, 'звук побудувався один раз');
+
+  // Без дії людини браузер звук не пускає — тоді перемикач має сказати про це словами
+  const waiting = api.ctx.state !== 'running';
+  if (waiting) {
+    ok(btn.classList.contains('waiting'), 'поки браузер не пустив звук, перемикач чекає');
+    ok(btn.textContent.includes('торкнись'), 'і просить торкнутись сторінки');
+  } else {
+    ok(!btn.classList.contains('waiting'), 'звук пішов одразу, перемикач не чекає');
+    ok(btn.textContent.trim() === 'нічне небо', 'на перемикачі написано «нічне небо»');
+  }
+
+  // ───────── з чого складається звук ─────────
+  ok(built.sources === 1, 'є один шар шуму — подих');
+  ok(built.oscillators >= 10, 'є голоси акорду і повільні хвилі, що ними гуляють (' + built.oscillators + ')');
+  ok(built.convolvers === 1, 'у дзвіночків є хвіст');
+
+  const master = api.master;
+  ok(master === built.gains[0], 'загальна гучність — перший вузол у ланцюжку');
+  ok(api.level > 0 && api.level <= 0.15, 'загальна гучність тиха: ' + api.level);
+  const loud = api.audio.filter((g) => g.gain.value > 1);
+  ok(loud.length === 0, 'жоден звуковий шар не підсилює звук (' + loud.length + ' надто голосних)');
+  const sum = api.audio.slice(1).reduce((a, g) => a + g.gain.value, 0);
+  ok(sum * api.level < 0.5, 'усі шари разом залишаються тихими: ' + (sum * api.level).toFixed(3));
+
+  // ───────── перемикання ─────────
+  const soft = (v) => targets.filter((t) => t.param === master.gain && Math.abs(t.value - v) < 1e-6).pop();
+  ok(!!soft(api.level) && soft(api.level).tc >= 1, 'звук наростає плавно, за секунди, а не миттю');
+
+  btn.click();
+  await wait(30);
+  ok(btn.getAttribute('aria-pressed') === 'false' && api.on === false, 'клік вимикає звук');
+  const down = soft(api.silent);
+  ok(!!down && down.tc >= 1, 'і гасне так само плавно, а не обривом');
+  ok(!btn.classList.contains('waiting'), 'вимкнений перемикач нічого не чекає');
+  let saved = null;
+  try { saved = localStorage.getItem(KEY); } catch {}
+  ok(saved === '0', 'вимкнення запамʼяталося в браузері');
+
+  btn.click();
+  await wait(30);
+  ok(btn.getAttribute('aria-pressed') === 'true' && api.on === true, 'другий клік вертає звук');
+  try { saved = localStorage.getItem(KEY); } catch {}
+  ok(saved === '1', 'увімкнення теж запамʼяталося');
+  ok(built.contexts === 1, 'перемикання не будує звук заново');
+
+  finish();
+
+  function finish() {
+    window.AudioContext = Real;
+    window.webkitAudioContext = Real;
+    AudioParam.prototype.setTargetAtTime = realTarget;
+    try {
+      if (backup === null) localStorage.removeItem(KEY);
+      else localStorage.setItem(KEY, backup);
+    } catch {}
+
+    const s = document.getElementById('summary');
+    s.textContent = fails
+      ? 'не пройдено ' + fails + ' з ' + total
+      : 'усі ' + total + ' перевірок пройдено';
+    s.className = fails ? 'fail' : 'pass';
+    line('Звук тут не перевіряється на слух — лише те, з чого він складається. ' +
+         'Послухати можна на index.html, sudoku.html, crossword.html або snake.html.', 'info');
+  }
+})();
+</script>
+</body>
+</html>
